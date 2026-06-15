@@ -54,19 +54,20 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-  <!-- Firebase SDKs (v11) -->
-  <!-- REST API Config -->
+  <!-- App Config (API base / LIFF / Fitbit) -->
   <script>
-    // Global Config for API
+    // 環境別に切り替えやすいよう、外部依存IDをここに集約
     window.AWS_CONFIG = {
       apiBase: "https://i3ar4264ka.execute-api.ap-northeast-1.amazonaws.com/Prod"
+    };
+    window.APP_CONFIG = {
+      liffId: "2008978598-Ipe0zQRV",
+      fitbitClientId: "23TRN8"
     };
   </script>
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
-  <!-- Firebase Config -->
-  <script type="module" src="firebase-config.js"></script>
 
 </head>
 
@@ -643,9 +644,16 @@
               <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl mb-2">👤</div>
               <div class="font-bold">demo_pt (ゲスト)</div>
 
+              <!-- LINE Link Button -->
+              <button id="btn-line-link"
+                class="mt-4 btn-secondary text-[#06C755] border-green-100 flex items-center gap-2"
+                onclick="MoveCare.linkLineAccount()">
+                LINEアカウントと連携する
+              </button>
+
               <!-- Fitbit Connect Button (Static) -->
               <button id="btn-fitbit-connect"
-                class="mt-4 btn-secondary text-teal-600 border-teal-100 flex items-center gap-2"
+                class="mt-2 btn-secondary text-teal-600 border-teal-100 flex items-center gap-2"
                 onclick="MoveCare.connectFitbit()">
                 Fitbitアカウントと連携する
               </button>

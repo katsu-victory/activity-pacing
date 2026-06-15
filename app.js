@@ -1,5 +1,5 @@
 console.log("TEST V149");
-/* oncology_app/app.js - Refactored for Firebase Integration */
+/* oncology_app/app.js - AWS (API Gateway + Lambda + DynamoDB) backend */
 
 /* ===== 共通状態 / State ===== */
 const STORAGE_KEY_VO2 = "eo_vo2_records_v1";
@@ -212,7 +212,8 @@ const MoveCare = {
     async initLIFF() {
         console.log("Initializing LIFF (app.js)...");
         try {
-            await liff.init({ liffId: "2008978598-Ipe0zQRV" });
+            const liffId = (window.APP_CONFIG && window.APP_CONFIG.liffId) || "2008978598-Ipe0zQRV";
+            await liff.init({ liffId });
 
             // URLクリーンアップ & パラメータ有無の検知
             const url = new URL(window.location.href);
@@ -232,11 +233,6 @@ const MoveCare = {
             // 1. セッション成立済みなら停止 (DOMContentLoadedで既に表示済みのため再描画しない)
             if (hasSession) {
                 console.log(">>> [SAFE] Session active. Skipping redundant start. <<<");
-                // If it's the target user, double check the ID mapping
-                const TARGET_LINE_UID = 'Ub8fbc4be1b65aeab49cf3837cd66f8ed';
-                if (AppState.subject && AppState.subject.lineUserId === TARGET_LINE_UID) {
-                    AppState.subject.id = '1';
-                }
                 return;
             }
 
@@ -333,33 +329,17 @@ const MoveCare = {
     async loginAndFetchProfile(uid, displayName, mode) {
         console.log(`Fetching profile for: ${uid} (AWS) Mode: ${mode}`);
         try {
-            let finalId = uid;
-            const TARGET_LINE_UID = 'Ub8fbc4be1b65aeab49cf3837cd66f8ed';
-            if (mode === 'line' && uid === TARGET_LINE_UID) {
-                finalId = '1';
-                console.log("[Auth] Mapping LINE UID to Subject ID: 1");
-            }
-
             let res;
             if (mode === 'line') {
-                // /auth/line はエイリアス(SUBJECT_ALIAS)を解決して本物の被験者データを返す
+                // /auth/line は LINE_ALIAS#{uid} を解決して本物の被験者データを返す
                 res = await fetch(getApiUrl("auth/line"), {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId: uid }) // Keep original UID for alias lookup if needed, but the mapping above is proactive
+                    body: JSON.stringify({ userId: uid })
                 });
-
-                // If proactive mapping is preferred over backend alias lookup for this specific user:
-                if (uid === TARGET_LINE_UID) {
-                    console.log("[Auth] Overriding LINE auth with direct Subject 1 fetch");
-                    res = await fetch(getApiUrl(`subjects/1`));
-                }
             } else {
-                res = await fetch(getApiUrl(`subjects/${finalId}`));
+                res = await fetch(getApiUrl(`subjects/${uid}`));
             }
-
-            // Sync the uid to finalId for the rest of the session
-            const effectiveId = (mode === 'line' && uid === TARGET_LINE_UID) ? '1' : uid;
 
             let userData;
             if (res.ok) {
@@ -415,6 +395,12 @@ const MoveCare = {
             }
 
             // Session Setup
+            // line モードはサーバ(/auth/line)がエイリアス解決した研究IDを使う。
+            // manual モードは入力された研究ID(uid)をそのまま使う。
+            const effectiveId = (mode === 'line')
+                ? String(userData.id || uid)
+                : uid;
+
             const sessionData = {
                 ...userData,
                 id: effectiveId,
@@ -550,6 +536,7 @@ const MoveCare = {
         refreshUI();
         refreshSubjectUI();
         MoveCare.renderPriorityChips(); // V175: Init chips
+        MoveCare.refreshLineLinkUI(); // LINE連携ボタンの状態反映
 
         // Fitbitデータ取得 (hasFitbit 判定)
         if (AppState.subject && AppState.subject.hasFitbit) {
@@ -677,7 +664,7 @@ const MoveCare = {
         }
 
         // バックエンド経由ではなくフロントエンドで直接URLを組み立てる (より確実)
-        const clientId = "23TRN8";
+        const clientId = (window.APP_CONFIG && window.APP_CONFIG.fitbitClientId) || "23TRN8";
         const scope = encodeURIComponent("activity profile heartrate sleep");
         const redirectUri = encodeURIComponent(`${window.AWS_CONFIG.apiBase}/fitbit/callback`);
         const state = AppState.subject.id; // subjectIdをstateとして渡す
@@ -701,6 +688,67 @@ const MoveCare = {
         } catch (err) {
             console.error(">>> [Fitbit] Redirect failed:", err);
             window.location.assign(authUrl);
+        }
+    },
+
+    /* --- LINE Account Linking --- */
+    // 研究IDでログイン中のユーザーが、自分のLINEアカウントを明示的に連携する。
+    // 連携後は /auth/line 経由でLINEだけでログインできるようになる。
+    async linkLineAccount() {
+        if (!AppState.subject || !AppState.subject.id) {
+            alert("先に研究IDでログインしてください。");
+            return;
+        }
+        if (typeof liff === 'undefined') {
+            alert("LINEアプリ内、またはLINEログイン環境で開いてください。");
+            return;
+        }
+
+        try {
+            // LIFF未ログインならまずLINEログインへ（戻ってきたら再度ボタンを押してもらう）
+            if (!liff.isLoggedIn()) {
+                localStorage.setItem("mc-auth-mode", "manual"); // セッションは研究IDのまま維持
+                liff.login();
+                return;
+            }
+
+            const profile = await liff.getProfile();
+            console.log("[LINE Link] Linking subject", AppState.subject.id, "to LINE", profile.userId);
+
+            const res = await fetch(getApiUrl(`subjects/${AppState.subject.id}/link`), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: profile.userId })
+            });
+            if (!res.ok) throw new Error(`連携APIエラー (${res.status})`);
+
+            // セッションに反映して永続化
+            AppState.subject.linkedLineUserId = profile.userId;
+            localStorage.setItem("currentUser", JSON.stringify(AppState.subject));
+
+            if (typeof showToast === 'function') showToast("LINE連携が完了しました ✅");
+            else alert("LINE連携が完了しました。次回からLINEでログインできます。");
+
+            MoveCare.refreshLineLinkUI();
+        } catch (e) {
+            console.error("[LINE Link] failed:", e);
+            alert("LINE連携に失敗しました: " + e.message);
+        }
+    },
+
+    // アカウント画面のLINE連携ボタンの表示を、連携状態に応じて更新する
+    refreshLineLinkUI() {
+        const btn = document.getElementById("btn-line-link");
+        if (!btn) return;
+        const linked = !!(AppState.subject && AppState.subject.linkedLineUserId);
+        if (linked) {
+            btn.innerHTML = "✅ LINE連携済み";
+            btn.disabled = true;
+            btn.classList.add("opacity-60");
+        } else {
+            btn.innerHTML = "LINEアカウントと連携する";
+            btn.disabled = false;
+            btn.classList.remove("opacity-60");
         }
     },
 
@@ -746,7 +794,7 @@ const MoveCare = {
         setTimeout(() => {
             new Notification("Activity Pacing: 時間です！", {
                 body: `${title}\n活動の時間になりました。無理せず始めましょう。`,
-                icon: "https://via.placeholder.com/128?text=AP" // Placeholder icon
+                icon: "/icon.png"
             });
         }, delay);
 
@@ -2762,6 +2810,27 @@ function openDevTool() {
     if (iframe) iframe.src = "predictvo2.html";
     switchScreen("screen-dev");
 }
+
+/* --- Notification Permission (referenced from index.html) --- */
+async function requestNotificationPermission() {
+    if (!("Notification" in window)) {
+        alert("このブラウザは通知機能に対応していません。");
+        return;
+    }
+    try {
+        const permission = await Notification.requestPermission();
+        if (permission === "granted") {
+            if (typeof showToast === 'function') showToast("プッシュ通知を有効にしました");
+            new Notification("Activity Pacing", { body: "通知が有効になりました。", icon: "/icon.png" });
+        } else {
+            alert("通知が許可されませんでした。ブラウザの設定をご確認ください。");
+        }
+    } catch (e) {
+        console.error("Notification permission error:", e);
+        alert("通知設定中にエラーが発生しました: " + e.message);
+    }
+}
+window.requestNotificationPermission = requestNotificationPermission;
 
 function renderVo2Latest() {
     const valEl = document.getElementById("vo2-latest-value");
