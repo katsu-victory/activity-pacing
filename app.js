@@ -706,17 +706,82 @@ const MoveCare = {
         // バックエンドの /health/auth が Google の認可画面へ302リダイレクトする
         const url = getApiUrl(`health/auth?subjectId=${encodeURIComponent(AppState.subject.id)}`);
         console.log(">>> [GoogleHealth] Auth start:", url);
+
+        // GoogleのOAuthはLINE等のアプリ内ブラウザ(webview)を拒否する(disallowed_useragent)。
+        // LINEクライアント内のときは自動遷移せず、外部ブラウザで開く案内を表示する。
+        const inLineClient = !!(window.liff && typeof liff.isInClient === 'function' && liff.isInClient());
+        if (inLineClient) {
+            MoveCare.showExternalBrowserGuide(url);
+            return;
+        }
+
+        // 通常ブラウザはそのまま遷移
         try {
-            // GoogleのOAuthはLINE内蔵ブラウザを拒否するため、必ず外部ブラウザで開く
-            if (window.liff && liff.isInClient()) {
-                liff.openWindow({ url, external: true });
-            } else {
-                window.location.href = url;
-            }
+            window.location.href = url;
         } catch (err) {
             console.error(">>> [GoogleHealth] Redirect failed:", err);
             window.location.assign(url);
         }
+    },
+
+    // LINE内ブラウザ用: 外部ブラウザで開く / URLコピー の案内オーバーレイ
+    showExternalBrowserGuide(url) {
+        // 既存があれば除去
+        const existing = document.getElementById('ext-browser-guide');
+        if (existing) existing.remove();
+
+        const overlay = document.createElement('div');
+        overlay.id = 'ext-browser-guide';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:10050;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,0.6);backdrop-filter:blur(4px);padding:24px;';
+        overlay.innerHTML = `
+            <div style="background:#fff;border-radius:24px;max-width:340px;width:100%;padding:24px;box-shadow:0 20px 40px rgba(0,0,0,0.2);text-align:center;">
+                <div style="font-size:40px;margin-bottom:8px;">🌐</div>
+                <div style="font-size:16px;font-weight:800;color:#1e293b;margin-bottom:8px;">外部ブラウザで連携してください</div>
+                <p style="font-size:12px;color:#64748b;line-height:1.6;margin-bottom:16px;">
+                    Google連携はセキュリティ上、LINE内のブラウザでは行えません。<br>
+                    Chrome / Safari など普通のブラウザで開いてください。
+                </p>
+                <button id="ext-open-btn" style="width:100%;background:#2563eb;color:#fff;border:none;padding:14px;border-radius:14px;font-weight:bold;font-size:14px;margin-bottom:10px;">外部ブラウザで開く</button>
+                <button id="ext-copy-btn" style="width:100%;background:#f1f5f9;color:#334155;border:none;padding:12px;border-radius:14px;font-weight:bold;font-size:13px;margin-bottom:10px;">リンクをコピー</button>
+                <button id="ext-close-btn" style="width:100%;background:transparent;color:#94a3b8;border:none;padding:8px;font-size:12px;">閉じる</button>
+            </div>`;
+        document.body.appendChild(overlay);
+
+        overlay.querySelector('#ext-open-btn').onclick = () => {
+            try {
+                if (window.liff && typeof liff.openWindow === 'function') {
+                    liff.openWindow({ url, external: true });
+                } else {
+                    window.open(url, '_blank');
+                }
+            } catch (e) {
+                console.error("openWindow failed", e);
+                window.open(url, '_blank');
+            }
+        };
+
+        overlay.querySelector('#ext-copy-btn').onclick = async () => {
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(url);
+                } else {
+                    const ta = document.createElement('textarea');
+                    ta.value = url;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                }
+                if (typeof showToast === 'function') showToast("リンクをコピーしました。ブラウザに貼り付けて開いてください");
+                else alert("リンクをコピーしました。Chrome/Safariに貼り付けて開いてください。");
+            } catch (e) {
+                console.error("copy failed", e);
+                alert("コピーに失敗しました。次のURLを手動で開いてください:\n" + url);
+            }
+        };
+
+        overlay.querySelector('#ext-close-btn').onclick = () => overlay.remove();
+        overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
     },
 
     async fetchHealthData() {
