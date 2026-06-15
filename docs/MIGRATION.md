@@ -48,6 +48,12 @@ window.APP_CONFIG = {
 | `FRONTEND_URL` | フロント公開URL（Fitbit連携後の戻り先） | `https://<本番ドメイン>` |
 | `FITBIT_CLIENT_ID` | Fitbit Client ID | `23TRN8` |
 | `FITBIT_CLIENT_SECRET` | **Fitbit Client Secret（秘密）** | （Secrets Manager 推奨） |
+| `GOOGLE_CLIENT_ID` | Google OAuth クライアントID | Google Health 連携用 |
+| `GOOGLE_CLIENT_SECRET` | **Google OAuth シークレット（秘密）** | Google Health 連携用 |
+| `GOOGLE_HEALTH_SCOPE` | スコープ | `.../auth/googlehealth.activity_and_fitness.readonly` |
+| `LINE_CHANNEL_ACCESS_TOKEN` | **LINE Messaging API チャネルアクセストークン（秘密）** | プッシュ通知用 |
+| `REMINDER_LEAD_MIN` | 活動リマインドの「何分前」 | 既定 10 |
+| `REMINDER_WINDOW_MIN` | リマインド判定の窓（EventBridge実行間隔と揃える） | 既定 10 |
 
 ---
 

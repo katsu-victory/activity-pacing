@@ -36,6 +36,12 @@ GOOGLE_HEALTH_SCOPE = os.environ.get(
     "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
 )
 
+# LINE Messaging API (プッシュ通知用)
+LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", "")
+# リマインドの「何分前」と、定期実行の間隔(=重複防止の窓)。EventBridgeの実行間隔と揃える。
+REMINDER_LEAD_MIN = int(os.environ.get("REMINDER_LEAD_MIN", "10"))
+REMINDER_WINDOW_MIN = int(os.environ.get("REMINDER_WINDOW_MIN", "10"))
+
 # --- AWS Clients (Lazy Init if needed, but usually fine globally in Lambda) ---
 dynamodb = boto3.resource('dynamodb', region_name=REGION)
 table_main = dynamodb.Table(DYNAMODB_TABLE_MAIN)
@@ -129,7 +135,14 @@ def lambda_handler(event, context):
     Routes based on resourcePath and httpMethod.
     """
     print("Received event:", json.dumps(event))
-    
+
+    # スケジュール実行(EventBridge)からの呼び出し。API Gatewayイベントではない。
+    sched_task = event.get('task')
+    if sched_task == 'reminders':
+        return {'statusCode': 200, 'sent': run_scheduled_reminders()}
+    if sched_task == 'daily_ai':
+        return {'statusCode': 200, 'sent': run_daily_ai_push()}
+
     # Handle preflight request (OPTIONS)
     if event.get('httpMethod') == 'OPTIONS':
         return create_response(200, {})
@@ -1566,6 +1579,135 @@ def handle_health_steps(event):
     except Exception as e:
         print(f"GoogleHealth steps error: {e}")
         return create_response(500, {'error': str(e)})
+
+
+# --- LINE Push Notification (Messaging API) ---
+
+def push_line_message(line_user_id, text):
+    """指定したLINEユーザーへプッシュメッセージを送る。"""
+    if not LINE_CHANNEL_ACCESS_TOKEN:
+        print("LINE_CHANNEL_ACCESS_TOKEN not set; skip push")
+        return False
+    if not line_user_id:
+        return False
+    payload = json.dumps({
+        "to": line_user_id,
+        "messages": [{"type": "text", "text": text[:4900]}]
+    }).encode('utf-8')
+    req = urllib.request.Request(
+        "https://api.line.me/v2/bot/message/push",
+        data=payload,
+        headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+        },
+        method='POST'
+    )
+    try:
+        with urllib.request.urlopen(req) as res:
+            return True
+    except urllib.error.HTTPError as e:
+        try:
+            print("LINE push failed:", e.code, e.read().decode()[:300])
+        except Exception:
+            print("LINE push failed:", e.code)
+        return False
+    except Exception as e:
+        print("LINE push error:", e)
+        return False
+
+
+def _list_linked_subjects():
+    """linkedLineUserId を持つ被験者データの一覧 [(data, lineUserId), ...] を返す。"""
+    from boto3.dynamodb.conditions import Attr
+    out = []
+    resp = table_main.scan(FilterExpression=Attr('param').begins_with("SUBJECT#"))
+    items = resp.get('Items', [])
+    while 'LastEvaluatedKey' in resp:
+        resp = table_main.scan(
+            FilterExpression=Attr('param').begins_with("SUBJECT#"),
+            ExclusiveStartKey=resp['LastEvaluatedKey']
+        )
+        items.extend(resp.get('Items', []))
+    for it in items:
+        d = it.get('data', {})
+        uid = d.get('linkedLineUserId')
+        if uid:
+            out.append((d, uid))
+    return out
+
+
+def run_scheduled_reminders():
+    """各ユーザーの daily_schedule を見て、開始 REMINDER_LEAD_MIN 分前の活動をLINE通知する。"""
+    now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
+    now_min = now_jst.hour * 60 + now_jst.minute
+    today = now_jst.strftime("%Y-%m-%d")
+    sent = 0
+
+    for d, uid in _list_linked_subjects():
+        schedule = d.get('daily_schedule')
+        if not isinstance(schedule, list):
+            continue
+        # 当日分のみ残して重複送信を防ぐ
+        notified = [k for k in (d.get('notified_keys') or []) if str(k).startswith(today)]
+        changed = False
+
+        for task in schedule:
+            if not isinstance(task, dict):
+                continue
+            sm = task.get('startMinute')
+            if sm is None:
+                continue
+            try:
+                sm = int(sm)
+            except (ValueError, TypeError):
+                continue
+            remind_at = sm - REMINDER_LEAD_MIN
+            if remind_at <= now_min < remind_at + REMINDER_WINDOW_MIN:
+                key = f"{today}#{sm}#{task.get('title', '')}"
+                if key in notified:
+                    continue
+                title = task.get('title', '活動')
+                msg = (f"まもなく {sm // 60:02d}:{sm % 60:02d} から"
+                       f"「{title}」の時間です。\n無理せず、できる範囲で動きましょう🌱")
+                if push_line_message(uid, msg):
+                    notified.append(key)
+                    changed = True
+                    sent += 1
+
+        if changed:
+            sid = d.get('id')
+            if sid is not None:
+                try:
+                    table_main.update_item(
+                        Key={'param': f"SUBJECT#{sid}"},
+                        UpdateExpression="SET #d.notified_keys = :k",
+                        ExpressionAttributeNames={'#d': 'data'},
+                        ExpressionAttributeValues={':k': notified}
+                    )
+                except Exception as e:
+                    print("notified_keys save failed:", e)
+
+    print(f"run_scheduled_reminders: sent={sent}")
+    return sent
+
+
+def run_daily_ai_push():
+    """毎朝、AI生成の応援メッセージ(今日の提案)をLINEで送る。"""
+    sent = 0
+    for d, uid in _list_linked_subjects():
+        try:
+            cond = {"fatigue_0_10": 5, "pain_0_10": 0,
+                    "energy_budget_0_100": 60, "sleep_quality": 1}
+            msg = generate_message_bedrock(
+                "Normal", "おはようございます。", cond, "", ["10:00", "14:00"]
+            )
+            if push_line_message(uid, "☀️ おはようございます！\n" + msg):
+                sent += 1
+        except Exception as e:
+            print("daily ai push error:", e)
+    print(f"run_daily_ai_push: sent={sent}")
+    return sent
 
 
 def login_with_line(body):
