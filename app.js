@@ -709,8 +709,11 @@ const MoveCare = {
 
         // GoogleのOAuthはLINE等のアプリ内ブラウザ(webview)を拒否する(disallowed_useragent)。
         // LINEクライアント内のときは自動遷移せず、外部ブラウザで開く案内を表示する。
-        const inLineClient = !!(window.liff && typeof liff.isInClient === 'function' && liff.isInClient());
-        if (inLineClient) {
+        // isInClient() が false を返す端末もあるため UA も併用して判定する。
+        const ua = navigator.userAgent || '';
+        const isLiffClient = !!(window.liff && typeof liff.isInClient === 'function' && liff.isInClient());
+        const isInAppWebview = /Line\//i.test(ua) || /FBAN|FBAV|Instagram/i.test(ua);
+        if (isLiffClient || isInAppWebview) {
             MoveCare.showExternalBrowserGuide(url);
             return;
         }
@@ -722,6 +725,11 @@ const MoveCare = {
             console.error(">>> [GoogleHealth] Redirect failed:", err);
             window.location.assign(url);
         }
+    },
+
+    // LINEのURLに付けるとOS標準ブラウザで開く特殊パラメータ
+    withExternalBrowserParam(url) {
+        return url + (url.includes('?') ? '&' : '?') + 'openExternalBrowser=1';
     },
 
     // LINE内ブラウザ用: 外部ブラウザで開く / URLコピー の案内オーバーレイ
@@ -748,15 +756,14 @@ const MoveCare = {
         document.body.appendChild(overlay);
 
         overlay.querySelector('#ext-open-btn').onclick = () => {
+            // LINEは openExternalBrowser=1 付きURLへ「遷移」するとOS標準ブラウザで開く。
+            // liff.openWindow はアプリ内ブラウザを開く端末があるため location.href を使う。
+            const extUrl = MoveCare.withExternalBrowserParam(url);
             try {
-                if (window.liff && typeof liff.openWindow === 'function') {
-                    liff.openWindow({ url, external: true });
-                } else {
-                    window.open(url, '_blank');
-                }
+                window.location.href = extUrl;
             } catch (e) {
-                console.error("openWindow failed", e);
-                window.open(url, '_blank');
+                console.error("external open failed", e);
+                window.location.href = extUrl;
             }
         };
 
