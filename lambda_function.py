@@ -28,6 +28,14 @@ FRONTEND_URL = os.environ.get("FRONTEND_URL", "https://dk3cg4zo1qjy9.cloudfront.
 FITBIT_CLIENT_ID = os.environ.get("FITBIT_CLIENT_ID", "23TRN8")
 FITBIT_CLIENT_SECRET = os.environ.get("FITBIT_CLIENT_SECRET", "")
 
+# Google Health API (Fitbit Web API の後継。2026年9月に旧Fitbit停止)
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+GOOGLE_HEALTH_SCOPE = os.environ.get(
+    "GOOGLE_HEALTH_SCOPE",
+    "https://www.googleapis.com/auth/googlehealth.activity_and_fitness.readonly"
+)
+
 # --- AWS Clients (Lazy Init if needed, but usually fine globally in Lambda) ---
 dynamodb = boto3.resource('dynamodb', region_name=REGION)
 table_main = dynamodb.Table(DYNAMODB_TABLE_MAIN)
@@ -90,6 +98,11 @@ ROUTES = {
     '/fitbit/steps': {'GET': 'handle_fitbit_steps'}, # Assuming GET for fetching steps
     '/fitbit/callback': {'GET': 'handle_fitbit_callback'}, # Fitbit callback is typically GET
     
+    # Google Health (Fitbit後継)
+    '/health/auth': {'GET': 'handle_health_auth'},
+    '/health/callback': {'GET': 'handle_health_callback'},
+    '/health/steps': {'GET': 'handle_health_steps'},
+
     # New routes
     '/auth/line': {'POST': 'login_with_line'},
     '/subjects/{id}/link': {'POST': 'link_line_id'}, # New route for linking
@@ -154,6 +167,17 @@ def lambda_handler(event, context):
                 elif parts[1] == 'steps':
                     return handle_fitbit_steps(event)
             return create_response(404, {'error': 'Fitbit sub-route not found'})
+
+        # 3.5 Google Health 連携 (Fitbit後継)
+        elif parts[0] == 'health':
+            if len(parts) > 1:
+                if parts[1] == 'auth':
+                    return handle_health_auth(event)
+                elif parts[1] == 'callback':
+                    return handle_health_callback(event)
+                elif parts[1] == 'steps':
+                    return handle_health_steps(event)
+            return create_response(404, {'error': 'Health sub-route not found'})
 
         # 4. Favicon (Ignore or simple response)
         elif parts[0] == 'favicon.ico':
@@ -1268,6 +1292,259 @@ def handle_fitbit_callback(event):
         return create_response(500, {'error': f'Token exchange failed: {err_body}'})
     except Exception as e:
         print(f"Callback Error: {e}")
+        return create_response(500, {'error': str(e)})
+
+
+# --- Google Health API Handlers (Fitbit後継) ---
+
+def handle_health_auth(event):
+    """
+    Google OAuth の認可画面へリダイレクトする。
+    subjectId を state として渡し、callback で受け取る。
+    """
+    params = event.get('queryStringParameters') or {}
+    subject_id = params.get('subjectId') or params.get('state') or 'unknown'
+
+    if not GOOGLE_CLIENT_ID:
+        return create_response(500, {'error': 'GOOGLE_CLIENT_ID is not configured'})
+
+    redirect_uri = f"{API_BASE_URL}/health/callback"
+    auth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth?response_type=code"
+        f"&client_id={quote(GOOGLE_CLIENT_ID, safe='')}"
+        f"&redirect_uri={quote(redirect_uri, safe='')}"
+        f"&scope={quote(GOOGLE_HEALTH_SCOPE)}"
+        "&access_type=offline&prompt=consent"  # refresh_token を確実に得る
+        f"&state={quote(str(subject_id), safe='')}"
+    )
+
+    return {
+        'statusCode': 302,
+        'headers': {
+            'Location': auth_url,
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET,OPTIONS'
+        },
+        'body': ''
+    }
+
+
+def refresh_google_token(refresh_token, subject_id):
+    """
+    Google のアクセストークン(1時間で失効)を refresh_token で更新し、DBに保存する。
+    新しい access_token を返す。失敗時は None。
+    """
+    token_url = "https://oauth2.googleapis.com/token"
+    data = urlencode({
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "refresh_token": refresh_token,
+        "grant_type": "refresh_token"
+    }).encode('utf-8')
+    try:
+        req = urllib.request.Request(
+            token_url, data=data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as res:
+            new_token = json.loads(res.read().decode())
+        # Google は refresh 時に refresh_token を返さないことがある → 既存を保持
+        if 'refresh_token' not in new_token:
+            new_token['refresh_token'] = refresh_token
+        table_main.update_item(
+            Key={'param': f'SUBJECT#{subject_id}'},
+            UpdateExpression="SET #d.google_health_token = :t",
+            ExpressionAttributeNames={'#d': 'data'},
+            ExpressionAttributeValues={':t': convert_floats_to_decimals(new_token)}
+        )
+        print(f"Google token refreshed for {subject_id}")
+        return new_token.get('access_token')
+    except Exception as e:
+        print(f"Google token refresh failed: {e}")
+        return None
+
+
+def handle_health_callback(event):
+    """
+    Google からの認可コードをトークンに交換し、被験者レコードに保存する。
+    """
+    params = event.get('queryStringParameters') or {}
+    code = params.get('code')
+    subject_id = params.get('state')  # handle_health_auth で渡した subjectId
+
+    if not code or not subject_id:
+        return create_response(400, {'error': 'Missing code or state'})
+
+    token_url = "https://oauth2.googleapis.com/token"
+    redirect_uri = f"{API_BASE_URL}/health/callback"
+    post_body = urlencode({
+        "code": code,
+        "client_id": GOOGLE_CLIENT_ID,
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uri": redirect_uri,
+        "grant_type": "authorization_code"
+    }).encode('utf-8')
+
+    try:
+        req = urllib.request.Request(
+            token_url, data=post_body,
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            method='POST'
+        )
+        with urllib.request.urlopen(req) as res:
+            token_resp = json.loads(res.read().decode())
+
+        print(f"Google Health Token acquired for {subject_id}")
+
+        table_main.update_item(
+            Key={'param': f'SUBJECT#{subject_id}'},
+            UpdateExpression="SET #d.google_health_token = :t, #d.hasGoogleHealth = :b",
+            ExpressionAttributeNames={'#d': 'data'},
+            ExpressionAttributeValues={
+                ':t': convert_floats_to_decimals(token_resp),
+                ':b': True
+            }
+        )
+
+        return_url = f"{FRONTEND_URL}/?health=success"
+        html = """
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1">
+            <title>連携完了 - Activity Pacing</title>
+            <style>
+                body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; text-align: center; padding: 20px; background: #f0fdf4; color: #166534; display: flex; flex-direction: column; justify-content: center; min-height: 90vh; margin: 0; }
+                .card { background: white; padding: 40px 24px; border-radius: 32px; box-shadow: 0 20px 40px rgba(22, 101, 52, 0.08); max-width: 400px; margin: 0 auto; width: 100%; box-sizing: border-box; }
+                h1 { margin: 0 0 16px 0; font-size: 26px; font-weight: 800; }
+                p { margin: 0 0 32px 0; font-size: 15px; opacity: 0.8; line-height: 1.6; }
+                .icon { font-size: 64px; margin-bottom: 24px; display: block; }
+                .btn { display: block; padding: 16px 32px; background: #166534; color: white; border-radius: 16px; text-decoration: none; font-weight: bold; font-size: 16px; }
+            </style>
+        </head>
+        <body>
+            <div class="card">
+                <span class="icon">✨</span>
+                <h1>健康データ連携 成功!</h1>
+                <p>Google Health との接続が完了しました。<br>歩数などがアプリに同期されます。</p>
+                <a href="__RETURN_URL__" class="btn">アプリに戻る</a>
+                <p style="margin-top: 24px; font-size: 12px; opacity: 0.5;">※このタブを閉じてLINEに戻っても大丈夫です</p>
+            </div>
+        </body>
+        </html>
+        """
+        html = html.replace("__RETURN_URL__", return_url)
+
+        return {
+            'statusCode': 200,
+            'headers': {'Content-Type': 'text/html'},
+            'body': html
+        }
+
+    except urllib.error.HTTPError as e:
+        err_body = e.read().decode()
+        print(f"Google Token Exchange Error: {err_body}")
+        return create_response(500, {'error': f'Token exchange failed: {err_body}'})
+    except Exception as e:
+        print(f"Google Callback Error: {e}")
+        return create_response(500, {'error': str(e)})
+
+
+def handle_health_steps(event):
+    """
+    Google Health API から歩数を取得する。
+    注意: 新APIのレスポンス形式は実呼び出しで要確認のため、生データをログ出力し
+    防御的にパースする（初回キャリブレーション後に確定させる）。
+    """
+    params = event.get('queryStringParameters') or {}
+    subject_id = params.get('subjectId')
+
+    if not subject_id:
+        return create_response(400, {'error': 'Missing subjectId'})
+
+    try:
+        user_res = table_main.get_item(Key={'param': f'SUBJECT#{subject_id}'})
+        item = user_res.get('Item')
+        if not item:
+            return create_response(404, {'error': 'User not found'})
+
+        user_data = item.get('data', item)
+        token_data = user_data.get('google_health_token')
+
+        if not token_data or 'access_token' not in token_data:
+            return create_response(200, {'steps': 0, 'steps_yesterday': 0, 'status': 'no_token'})
+
+        access_token = token_data['access_token']
+        refresh_token = token_data.get('refresh_token')
+
+        def gh_get(url, token, retry=True):
+            req = urllib.request.Request(
+                url,
+                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+            )
+            try:
+                with urllib.request.urlopen(req) as res:
+                    return json.loads(res.read().decode())
+            except urllib.error.HTTPError as e:
+                if e.code == 401 and retry and refresh_token:
+                    new_token = refresh_google_token(refresh_token, subject_id)
+                    if new_token:
+                        return gh_get(url, new_token, retry=False)
+                raise e
+
+        # Google Health API: 歩数データポイント
+        url = "https://health.googleapis.com/v4/users/me/dataTypes/steps/dataPoints"
+        data = gh_get(url, access_token)
+
+        # 生レスポンスをログ出力（レスポンス形状の確定用）
+        try:
+            print("GoogleHealth steps raw:", json.dumps(data)[:1500])
+        except Exception:
+            print("GoogleHealth steps raw (non-json):", str(data)[:1500])
+
+        # --- 防御的パース（形状はログ確認後に確定する） ---
+        steps_today = 0
+        steps_yesterday = 0
+        try:
+            now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
+            today_str = now_jst.strftime("%Y-%m-%d")
+            yesterday_str = (now_jst - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+            points = data.get('dataPoints') or data.get('dataPoint') or data.get('points') or []
+            for p in points:
+                # 値の取り出し（候補キーを順に試す）
+                val = p.get('value')
+                if isinstance(val, dict):
+                    val = val.get('intVal') or val.get('fpVal') or val.get('value') or 0
+                val = int(val or 0)
+                # 日付の取り出し
+                ts = str(p.get('startTime') or p.get('date') or p.get('time') or '')
+                if ts.startswith(today_str):
+                    steps_today += val
+                elif ts.startswith(yesterday_str):
+                    steps_yesterday += val
+        except Exception as parse_err:
+            print(f"GoogleHealth parse warning: {parse_err}")
+
+        return create_response(200, {
+            'steps': steps_today,
+            'steps_yesterday': steps_yesterday,
+            'status': 'success',
+            # デバッグ用: レスポンスのトップレベルキー（確定後に削除可）
+            'debug_keys': list(data.keys()) if isinstance(data, dict) else None
+        })
+
+    except urllib.error.HTTPError as e:
+        err_body = ''
+        try:
+            err_body = e.read().decode()
+        except Exception:
+            pass
+        print(f"GoogleHealth steps HTTPError: {e.code} {err_body}")
+        return create_response(500, {'error': f'Health API error {e.code}', 'detail': err_body[:500]})
+    except Exception as e:
+        print(f"GoogleHealth steps error: {e}")
         return create_response(500, {'error': str(e)})
 
 

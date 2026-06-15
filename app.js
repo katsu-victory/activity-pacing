@@ -544,6 +544,12 @@ const MoveCare = {
             MoveCare.fetchFitbitData();
         }
 
+        // Google Health データ取得 (hasGoogleHealth 判定) — Fitbit後継
+        if (AppState.subject && AppState.subject.hasGoogleHealth) {
+            console.log("Google Health linked user detected. Fetching steps...");
+            MoveCare.fetchHealthData();
+        }
+
         // Reveal App
         const main = document.getElementById("app-main");
         if (main) main.classList.remove("opacity-0");
@@ -688,6 +694,45 @@ const MoveCare = {
         } catch (err) {
             console.error(">>> [Fitbit] Redirect failed:", err);
             window.location.assign(authUrl);
+        }
+    },
+
+    /* --- Google Health 連携 (Fitbit後継) --- */
+    async connectGoogleHealth() {
+        if (!AppState.subject || !AppState.subject.id) {
+            alert("ログインが必要です");
+            return;
+        }
+        // バックエンドの /health/auth が Google の認可画面へ302リダイレクトする
+        const url = getApiUrl(`health/auth?subjectId=${encodeURIComponent(AppState.subject.id)}`);
+        console.log(">>> [GoogleHealth] Auth start:", url);
+        try {
+            // GoogleのOAuthはLINE内蔵ブラウザを拒否するため、必ず外部ブラウザで開く
+            if (window.liff && liff.isInClient()) {
+                liff.openWindow({ url, external: true });
+            } else {
+                window.location.href = url;
+            }
+        } catch (err) {
+            console.error(">>> [GoogleHealth] Redirect failed:", err);
+            window.location.assign(url);
+        }
+    },
+
+    async fetchHealthData() {
+        if (!AppState.subject || !AppState.subject.id) return;
+        console.log("Fetching Google Health step data...");
+        try {
+            const res = await fetch(getApiUrl(`health/steps?subjectId=${AppState.subject.id}`));
+            if (res.ok) {
+                const data = await res.json();
+                console.log("Google Health data received:", data);
+                AppState.stepsToday = data.steps || 0;
+                AppState.stepsYesterday = data.steps_yesterday || 0;
+                if (typeof renderFitbitSteps === 'function') renderFitbitSteps();
+            }
+        } catch (e) {
+            console.warn("Google Health data fetch failed", e);
         }
     },
 

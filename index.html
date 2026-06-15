@@ -642,11 +642,18 @@
                 LINEアカウントと連携する
               </button>
 
-              <!-- Fitbit Connect Button (Static) -->
+              <!-- Google Health Connect Button (Fitbit後継) -->
+              <button id="btn-health-connect"
+                class="mt-2 btn-secondary text-blue-600 border-blue-100 flex items-center gap-2"
+                onclick="MoveCare.connectGoogleHealth()">
+                歩数データ（Google Health）と連携する
+              </button>
+
+              <!-- Fitbit Connect Button (Static) — 2026年9月で旧API停止予定 -->
               <button id="btn-fitbit-connect"
                 class="mt-2 btn-secondary text-teal-600 border-teal-100 flex items-center gap-2"
                 onclick="MoveCare.connectFitbit()">
-                Fitbitアカウントと連携する
+                Fitbitアカウントと連携する（旧）
               </button>
 
               <button class="mt-2 btn-secondary text-yellow-600 border-yellow-100 flex items-center gap-2"
