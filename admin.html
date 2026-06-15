@@ -124,13 +124,8 @@
         console.log("CRITICAL: LOADING ADMIN V177 AT TOP");
     </script>
 
-    <!-- AWS Config -->
-    <script>
-        window.AWS_CONFIG = {
-            apiBase: "https://i3ar4264ka.execute-api.ap-northeast-1.amazonaws.com/Prod"
-        };
-        console.log("Admin AWS Config Loaded");
-    </script>
+    <!-- AWS Config — 移行時は config.js だけ差し替え -->
+    <script src="config.js?v=V177"></script>
 
     <script type="text/babel">
         const { useState, useEffect } = React;

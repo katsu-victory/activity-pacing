@@ -54,17 +54,8 @@
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
-  <!-- App Config (API base / LIFF / Fitbit) -->
-  <script>
-    // 環境別に切り替えやすいよう、外部依存IDをここに集約
-    window.AWS_CONFIG = {
-      apiBase: "https://i3ar4264ka.execute-api.ap-northeast-1.amazonaws.com/Prod"
-    };
-    window.APP_CONFIG = {
-      liffId: "2008978598-Ipe0zQRV",
-      fitbitClientId: "23TRN8"
-    };
-  </script>
+  <!-- App Config (API base / LIFF / Fitbit) — 移行時はこのファイルだけ差し替え -->
+  <script src="config.js?v=20260210_V177"></script>
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
