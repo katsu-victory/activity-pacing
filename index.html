@@ -15,7 +15,7 @@
   <script>
     // Aggressive Version Check & Cache Clearing
     (function () {
-      const CURRENT_VERSION = "20260615_V181";
+      const CURRENT_VERSION = "20260615_V182";
       if (localStorage.getItem("app_version") !== CURRENT_VERSION) {
         console.log("New version detected! Clearing caches...");
         localStorage.setItem("app_version", CURRENT_VERSION);
@@ -48,14 +48,14 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- External CSS -->
-  <link rel="stylesheet" href="style.css?v=20260615_V181">
+  <link rel="stylesheet" href="style.css?v=20260615_V182">
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
   <!-- App Config (API base / LIFF / Fitbit) — 移行時はこのファイルだけ差し替え -->
-  <script src="config.js?v=20260615_V181"></script>
+  <script src="config.js?v=20260615_V182"></script>
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -323,12 +323,14 @@
           <!-- クイックアクセス (ボトムナビから外したメニューへの導線) -->
           <div id="home-quick-access" class="mt-3">
             <div class="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider px-1">クイックアクセス</div>
-            <div class="grid grid-cols-3 gap-2">
-              <button onclick="switchScreen('screen-program'); setActiveNav('nav-program');"
-                class="app-card !p-3 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
-                <span class="text-5xl leading-none">🎬</span>
-                <span class="text-[10px] font-bold text-slate-600">運動</span>
-              </button>
+            <!-- 運動: 横一列(全幅) -->
+            <button onclick="switchScreen('screen-program'); setActiveNav('nav-program');"
+              class="app-card !p-4 w-full flex items-center justify-center gap-3 active:scale-95 transition-all mb-2">
+              <span class="text-5xl leading-none">🎬</span>
+              <span class="text-base font-bold text-slate-700">運動</span>
+            </button>
+            <!-- 測定 / ツール: 2列 -->
+            <div class="grid grid-cols-2 gap-2">
               <button onclick="switchScreen('screen-measure'); setActiveNav('nav-measure');"
                 class="app-card !p-3 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
                 <span class="text-3xl leading-none">🎮</span>
@@ -1012,7 +1014,7 @@
   </div>
 
   <!-- Main App Script -->
-  <script src="app.js?v=20260615_V181"></script>
+  <script src="app.js?v=20260615_V182"></script>
   <script>
     // Aggressive Cache Busting for Service Workers
     try {

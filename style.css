@@ -34,6 +34,7 @@ body {
     /* 画面に固定した枠にし、中身(app-main)だけを内部スクロールさせる(ネイティブ風) */
     height: 100vh;
     height: 100dvh;
+    overflow: hidden;
 }
 
 @media (min-width: 640px) {
@@ -51,6 +52,7 @@ body {
     padding: 16px 20px 12px;
     background: linear-gradient(135deg, #22c55e, #16a5dd);
     color: #eff6ff;
+    flex-shrink: 0;
 }
 
 .app-header-title {
@@ -117,8 +119,7 @@ body {
 }
 
 .bottom-nav {
-    position: sticky;
-    bottom: 0;
+    flex-shrink: 0;
     z-index: 20;
     background: #ffffffee;
     backdrop-filter: blur(16px);
@@ -289,11 +290,9 @@ body {
     /* emerald-500 */
 }
 
+/* 重複定義: 固定枠モデルでは flex 子要素として扱う（position:fixed は使わない） */
 .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
+    flex-shrink: 0;
     background: #fff;
     border-top: 1px solid #eee;
     z-index: 1000;
