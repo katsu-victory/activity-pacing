@@ -485,6 +485,10 @@ const MoveCare = {
                 }
             }
         } catch (e) { console.error("Master data fetch failed", e); }
+
+        // プロジェクト情報(menuConfig)の取得は非同期のため、取得完了後にボトムナビを
+        // 再描画して「初回は全6メニュー → 後で減る」競合を解消する。
+        if (typeof renderBottomNav === 'function') renderBottomNav();
     },
 
     async fetchFitbitData() {

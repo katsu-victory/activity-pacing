@@ -15,7 +15,7 @@
   <script>
     // Aggressive Version Check & Cache Clearing
     (function () {
-      const CURRENT_VERSION = "20260615_V179";
+      const CURRENT_VERSION = "20260615_V180";
       if (localStorage.getItem("app_version") !== CURRENT_VERSION) {
         console.log("New version detected! Clearing caches...");
         localStorage.setItem("app_version", CURRENT_VERSION);
@@ -55,7 +55,7 @@
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
   <!-- App Config (API base / LIFF / Fitbit) — 移行時はこのファイルだけ差し替え -->
-  <script src="config.js?v=20260615_V179"></script>
+  <script src="config.js?v=20260615_V180"></script>
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -319,6 +319,28 @@
             </div>
 
           </div> <!-- Close Main App Card -->
+
+          <!-- クイックアクセス (ボトムナビから外したメニューへの導線) -->
+          <div id="home-quick-access" class="mt-3">
+            <div class="text-[10px] font-bold text-slate-400 mb-2 uppercase tracking-wider px-1">クイックアクセス</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button onclick="switchScreen('screen-program'); setActiveNav('nav-program');"
+                class="app-card !p-3 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
+                <span class="text-2xl">🎬</span>
+                <span class="text-[10px] font-bold text-slate-600">運動</span>
+              </button>
+              <button onclick="switchScreen('screen-measure'); setActiveNav('nav-measure');"
+                class="app-card !p-3 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
+                <span class="text-2xl">🎮</span>
+                <span class="text-[10px] font-bold text-slate-600">測定</span>
+              </button>
+              <button onclick="switchScreen('screen-tools'); setActiveNav('nav-tools');"
+                class="app-card !p-3 flex flex-col items-center justify-center gap-1 active:scale-95 transition-all">
+                <span class="text-2xl">🧮</span>
+                <span class="text-[10px] font-bold text-slate-600">ツール</span>
+              </button>
+            </div>
+          </div>
 
           <!-- Admin Message (Feedforward) -->
           <div id="home-admin-message"
@@ -990,7 +1012,7 @@
   </div>
 
   <!-- Main App Script -->
-  <script src="app.js?v=20260615_V179"></script>
+  <script src="app.js?v=20260615_V180"></script>
   <script>
     // Aggressive Cache Busting for Service Workers
     try {
