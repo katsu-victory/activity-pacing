@@ -1479,10 +1479,13 @@ def handle_health_steps(event):
         access_token = token_data['access_token']
         refresh_token = token_data.get('refresh_token')
 
-        def gh_get(url, token, retry=True):
+        # アクセストークンを更新可能な形で保持（ページング中のリフレッシュに対応）
+        token_state = {'token': access_token}
+
+        def gh_get(url, retry=True):
             req = urllib.request.Request(
                 url,
-                headers={"Authorization": f"Bearer {token}", "Accept": "application/json"}
+                headers={"Authorization": f"Bearer {token_state['token']}", "Accept": "application/json"}
             )
             try:
                 with urllib.request.urlopen(req) as res:
@@ -1491,48 +1494,65 @@ def handle_health_steps(event):
                 if e.code == 401 and retry and refresh_token:
                     new_token = refresh_google_token(refresh_token, subject_id)
                     if new_token:
-                        return gh_get(url, new_token, retry=False)
+                        token_state['token'] = new_token
+                        return gh_get(url, retry=False)
                 raise e
 
-        # Google Health API: 歩数データポイント
-        url = "https://health.googleapis.com/v4/users/me/dataTypes/steps/dataPoints"
-        data = gh_get(url, access_token)
+        # 日付タプル(JST現地日付)。civilStartTime が現地日付なのでこれと比較する
+        now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
+        today_tuple = (now_jst.year, now_jst.month, now_jst.day)
+        y_jst = now_jst - datetime.timedelta(days=1)
+        yesterday_tuple = (y_jst.year, y_jst.month, y_jst.day)
 
-        # 生レスポンスをログ出力（レスポンス形状の確定用）
-        try:
-            print("GoogleHealth steps raw:", json.dumps(data)[:1500])
-        except Exception:
-            print("GoogleHealth steps raw (non-json):", str(data)[:1500])
+        def point_count(p):
+            try:
+                return int(p.get('steps', {}).get('count', 0))
+            except (ValueError, TypeError):
+                return 0
 
-        # --- 防御的パース（形状はログ確認後に確定する） ---
+        def point_date(p):
+            d = (p.get('steps', {}).get('interval', {})
+                 .get('civilStartTime', {}).get('date', {}))
+            if d:
+                return (d.get('year'), d.get('month'), d.get('day'))
+            return None
+
+        # Google Health API: 歩数データポイント（1ページ最大50件＋pageToken）
+        url_base = "https://health.googleapis.com/v4/users/me/dataTypes/steps/dataPoints"
         steps_today = 0
         steps_yesterday = 0
-        try:
-            now_jst = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=9)
-            today_str = now_jst.strftime("%Y-%m-%d")
-            yesterday_str = (now_jst - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-            points = data.get('dataPoints') or data.get('dataPoint') or data.get('points') or []
+        scanned = 0
+        page_token = None
+
+        for _ in range(40):  # 安全上限: 40ページ(最大2000件)
+            url = url_base + (f"?pageToken={quote(page_token, safe='')}" if page_token else "")
+            data = gh_get(url)
+            points = data.get('dataPoints') or []
+            scanned += len(points)
+
+            oldest_in_page = None
             for p in points:
-                # 値の取り出し（候補キーを順に試す）
-                val = p.get('value')
-                if isinstance(val, dict):
-                    val = val.get('intVal') or val.get('fpVal') or val.get('value') or 0
-                val = int(val or 0)
-                # 日付の取り出し
-                ts = str(p.get('startTime') or p.get('date') or p.get('time') or '')
-                if ts.startswith(today_str):
-                    steps_today += val
-                elif ts.startswith(yesterday_str):
-                    steps_yesterday += val
-        except Exception as parse_err:
-            print(f"GoogleHealth parse warning: {parse_err}")
+                cnt = point_count(p)
+                pd = point_date(p)
+                if pd == today_tuple:
+                    steps_today += cnt
+                elif pd == yesterday_tuple:
+                    steps_yesterday += cnt
+                if pd:
+                    oldest_in_page = pd  # 各ページは新しい順なので末尾が最古
+
+            page_token = data.get('nextPageToken')
+            if not page_token:
+                break
+            # このページの最古が前々日まで遡ったら、今日・昨日は取り切ったので終了
+            if oldest_in_page and oldest_in_page < yesterday_tuple:
+                break
 
         return create_response(200, {
             'steps': steps_today,
             'steps_yesterday': steps_yesterday,
             'status': 'success',
-            # デバッグ用: レスポンスのトップレベルキー（確定後に削除可）
-            'debug_keys': list(data.keys()) if isinstance(data, dict) else None
+            'points_scanned': scanned
         })
 
     except urllib.error.HTTPError as e:
