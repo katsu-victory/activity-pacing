@@ -15,7 +15,7 @@
   <script>
     // Aggressive Version Check & Cache Clearing
     (function () {
-      const CURRENT_VERSION = "20260615_V182";
+      const CURRENT_VERSION = "20260615_V183";
       if (localStorage.getItem("app_version") !== CURRENT_VERSION) {
         console.log("New version detected! Clearing caches...");
         localStorage.setItem("app_version", CURRENT_VERSION);
@@ -48,14 +48,14 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- External CSS -->
-  <link rel="stylesheet" href="style.css?v=20260615_V182">
+  <link rel="stylesheet" href="style.css?v=20260615_V183">
   <!-- PWA Manifest -->
   <link rel="manifest" href="manifest.json">
   <!-- Confetti -->
   <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
 
   <!-- App Config (API base / LIFF / Fitbit) — 移行時はこのファイルだけ差し替え -->
-  <script src="config.js?v=20260615_V182"></script>
+  <script src="config.js?v=20260615_V183"></script>
 
   <!-- LIFF SDK -->
   <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -1014,7 +1014,7 @@
   </div>
 
   <!-- Main App Script -->
-  <script src="app.js?v=20260615_V182"></script>
+  <script src="app.js?v=20260615_V183"></script>
   <script>
     // Aggressive Cache Busting for Service Workers
     try {

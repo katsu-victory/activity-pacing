@@ -2199,6 +2199,19 @@ function renderPlanTimeline() {
         }
     }
 
+    // 1.5 現在時刻ライン（赤）
+    const nowJst = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Tokyo' }));
+    const nowMin = nowJst.getHours() * 60 + nowJst.getMinutes();
+    if (nowMin >= startMin && nowMin <= endMin) {
+        const nowTop = (nowMin - startMin) * PX_PER_MIN;
+        const nowLine = document.createElement("div");
+        nowLine.id = "plan-now-line";
+        nowLine.className = "absolute w-full border-t-2 border-red-400 pointer-events-none z-10 flex items-center";
+        nowLine.style.top = `${nowTop}px`;
+        nowLine.innerHTML = `<span class="text-[9px] font-bold text-white bg-red-400 rounded px-1 -mt-2 ml-auto mr-1">現在 ${getJSTTimeStr(nowMin)}</span>`;
+        container.appendChild(nowLine);
+    }
+
     // 2. タスクの描画（2カラム化）
     // Ensure dailyPlan is array (migration safety)
     if (!Array.isArray(AppState.dailyPlan)) {
@@ -2789,6 +2802,17 @@ function switchScreen(id) {
         loadConfigFromStorage();
         loadPlanFromStorage();
         renderPlanTimeline();
+        // 開いたとき、現在時刻が画面の上の方に来るようスクロール
+        requestAnimationFrame(() => {
+            const main = document.getElementById("app-main");
+            const nowEl = document.getElementById("plan-now-line");
+            if (main && nowEl) {
+                const delta = nowEl.getBoundingClientRect().top - main.getBoundingClientRect().top;
+                main.scrollTop += delta - 80; // 80px上に余白を残して現在時刻を上部へ
+            } else if (main) {
+                main.scrollTop = 0;
+            }
+        });
     }
 }
 
