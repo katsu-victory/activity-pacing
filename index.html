@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>アクティビティペーシングアプリ</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- Nuclear Cache Busting -->
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // Aggressive Version Check & Cache Clearing
+    (function () {
+      const CURRENT_VERSION = "20260210_V177";
+      if (localStorage.getItem("app_version") !== CURRENT_VERSION) {
+        console.log("New version detected! Clearing caches...");
+        localStorage.setItem("app_version", CURRENT_VERSION);
+        if ('caches' in window) {
+          caches.keys().then(names => {
+            for (let name of names) caches.delete(name);
+          });
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(regs => {
+            for (let reg of regs) reg.unregister();
+          });
+        }
+        // Force immediate reload to get fresh index.html and app.js
+        window.location.reload(true);
+      }
+    })();
+  </script>
+  <script>
+    console.log("VERSION: 2026-02-10 V177 LOADED");
+    tailwind.config = {
+      theme: {
+        extend: {},
+      },
+    }
+  </script>
+  <style>
+    /* Suppress alerts */
+  </style>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- External CSS -->
+  <link rel="stylesheet" href="style.css">
+  <!-- PWA Manifest -->
+  <link rel="manifest" href="manifest.json">
+  <!-- Confetti -->
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+  <!-- Firebase SDKs (v11) -->
+  <!-- REST API Config -->
+  <script>
+    // Global Config for API
+    window.AWS_CONFIG = {
+      apiBase: "https://i3ar4264ka.execute-api.ap-northeast-1.amazonaws.com/Prod"
+    };
+  </script>
+
+  <!-- LIFF SDK -->
+  <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+  <!-- Firebase Config -->
+  <script type="module" src="firebase-config.js"></script>
+
+</head>
+
+<body>
+  <div class="app-root">
+    <div class="app-shell">
+
+      <!-- ===== ヘッダー ===== -->
+      <header class="app-header">
+        <div class="flex items-center justify-between">
+          <div>
+            <div class="text-[10px] font-semibold tracking-[0.2em] uppercase">
+              Activity Pacing App
+            </div>
+            <div id="header-title" class="app-header-title">
+              ホーム
+            </div>
+            <p id="header-subtitle" class="app-header-subtitle">
+              体調と体力に合わせて、今日の一歩を決めましょう。
+            </p>
+          </div>
+          <button onclick="switchScreen('screen-cloud')"
+            class="text-[10px] bg-white/20 px-2 py-1 rounded-full font-semibold backdrop-blur hover:bg-white/30 transition-colors flex items-center gap-1">
+            <span>👤</span> ID: <span id="header-subject-id">---</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ===== メイン ===== -->
+      <main id="app-main" class="app-main opacity-0 transition-opacity duration-500">
+
+        <!-- ▼ screen-home -->
+        <section id="screen-home" class="app-screen active">
+          <!-- 次の活動カード (V98追加) -->
+          <div id="next-action-card" class="app-card border-l-4 border-blue-500 bg-blue-50/50 mb-3 hidden">
+            <div class="flex items-center gap-3">
+              <div class="text-xl">🕒</div>
+              <div class="flex-1">
+                <div class="text-[9px] font-bold text-blue-600 uppercase tracking-widest">次回の活動予定</div>
+                <div id="next-action-text" class="text-xs font-bold text-slate-800 leading-tight">--:-- 〜 準備中</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AIからの追加提案カード (隙間時間用) -->
+          <div id="ai-addon-card"
+            class="hidden app-card border-l-4 border-emerald-400 bg-emerald-50/50 mb-4 animate-in fade-in slide-in-from-top duration-500 py-3">
+            <div class="flex items-start gap-3">
+              <div class="text-xl pt-0.5">💡</div>
+              <div class="flex-1">
+                <div class="text-[9px] font-bold text-emerald-600 mb-1 uppercase tracking-widest">AIからの追加提案</div>
+                <div id="ai-addon-text" class="text-xs font-bold text-slate-800 leading-snug mb-2">--</div>
+
+                <div id="ai-addon-actions" class="flex flex-wrap gap-1.5 mb-3"></div>
+
+                <div class="flex gap-2">
+                  <button id="ai-addon-approve-btn"
+                    class="bg-emerald-600 text-white text-[9px] font-bold px-3 py-1.5 rounded-lg active:scale-95 transition-all">反映</button>
+                  <button onclick="document.getElementById('ai-addon-card').classList.add('hidden')"
+                    class="bg-white text-slate-400 text-[9px] font-bold px-3 py-1.5 rounded-lg border border-slate-200">スキップ</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="app-card">
+            <div id="condition-header-area">
+              <div class="app-card-header-label">TODAY</div>
+              <div class="app-card-title">今日の体調をチェック</div>
+            </div>
+
+            <div id="mc-view-input">
+              <!-- 疲労感 (0-10) -->
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-500 mb-1">疲労感（0–10）</div>
+                <div class="flex items-end justify-between mb-1">
+                  <div class="text-3xl font-bold text-gray-800"><span id="mc-val-fatigue">5</span></div>
+                  <div class="text-[10px] text-gray-400">元気 ↔ ぐったり</div>
+                </div>
+                <input type="range" min="0" max="10" value="5"
+                  class="w-full accent-emerald-500 h-2 bg-gray-200 rounded-lg cursor-pointer"
+                  oninput="MoveCare.ui.updateFatigue(this.value)" />
+              </div>
+
+              <!-- 痛み -->
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-500 mb-2">痛み</div>
+                <div class="flex gap-2">
+                  <button class="mc-chip selected flex-1 text-center" onclick="MoveCare.ui.setPain(0, this)">なし</button>
+                  <button class="mc-chip flex-1 text-center" onclick="MoveCare.ui.setPain(1, this)">あり</button>
+                </div>
+              </div>
+
+              <!-- 気分 -->
+              <div class="mb-4">
+                <div class="text-xs font-semibold text-gray-500 mb-2">気分</div>
+                <div class="flex gap-2">
+                  <button class="mc-chip flex-1 text-center text-[10px]"
+                    onclick="MoveCare.ui.setMood('low', this)">控えめに</button>
+                  <button class="mc-chip selected flex-1 text-center text-[10px]"
+                    onclick="MoveCare.ui.setMood('mid', this)">普通</button>
+                  <button class="mc-chip flex-1 text-center text-[10px]"
+                    onclick="MoveCare.ui.setMood('high', this)">活動的</button>
+                </div>
+              </div>
+
+              <!-- VO2max -->
+              <div class="mb-3 p-3 rounded-xl bg-emerald-50 text-[10px] flex justify-between items-center">
+                <div id="home-vo2-display">VO₂max 記録なし</div>
+                <button class="px-2 py-1 bg-white border border-emerald-200 text-emerald-700 rounded-full font-bold"
+                  onclick="switchScreen('screen-tools'); setActiveNav('nav-tools');">記録</button>
+              </div>
+
+
+              <!-- 体重 -->
+              <div class="mb-2 p-2 rounded-xl border border-gray-100 text-[10px]">
+                <label class="flex items-center justify-between text-gray-600">
+                  <span>体重 (kcal計算用)</span>
+                  <input id="weight-input" type="number" value="60" class="border rounded px-2 w-16 text-right">
+                </label>
+              </div>
+
+              <!-- 優先活動 (V175: チップ選択式 UI) -->
+              <div class="mb-4 pt-4 border-t border-dashed border-slate-200">
+                <label class="block text-xs font-semibold text-gray-500 mb-2">今日どうしてもやりたい活動はありますか？</label>
+
+                <label class="block text-[10px] font-bold text-slate-400 mb-2 tracking-widest uppercase">SELECT
+                  ACTIVITY</label>
+                <div id="priority-activity-chips" class="flex flex-wrap gap-2 mb-3">
+                  <!-- JSでチップ生成 -->
+                </div>
+
+                <div class="relative mb-2">
+                  <input type="text" id="priority-activity-name" placeholder="または直接入力..."
+                    class="w-full text-sm font-bold border-b-2 border-slate-100 py-1 focus:border-emerald-500 outline-none transition-all placeholder:font-normal"
+                    onchange="MoveCare.ui.setPriorityName(this.value)">
+                </div>
+
+                <!-- カテゴリ選択 (ICF分類) -->
+                <select id="priority-activity-category"
+                  class="w-full border rounded-xl px-3 py-2 text-xs bg-white text-gray-600 focus:ring-2 focus:ring-emerald-200 focus:outline-none"
+                  onchange="MoveCare.ui.setPriorityCategory(this.value)">
+                  <option value="" disabled selected>カテゴリーを選択 (ICF分類)</option>
+                  <option value="WORK">仕事・学業・家事 (生産性活動)</option>
+                  <option value="HOBBY">趣味・余暇 (レジャー)</option>
+                  <option value="SOCIAL">社会参加・交流 (コミュニティ)</option>
+                  <option value="SELFCARE">セルフケア (休養・睡眠)</option>
+                  <option value="EXERCISE">運動・リハビリ (身体活動)</option>
+                </select>
+              </div>
+
+              <button class="btn-primary mt-4 py-3 text-sm" onclick="MoveCare.createProposal()">今日の提案をつくる ✨</button>
+            </div>
+
+            <!-- (Fitbit Card moved outside) -->
+
+            <!-- AIアドバイス結果ビュー (V106) -->
+            <div id="mc-view-result" class="hidden animate-in fade-in slide-in-from-bottom duration-500">
+              <!-- 薄緑の AIアドバイスカード -->
+              <div id="mc-result-card-container" class="border-2 border-emerald-400 bg-emerald-50 rounded-2xl p-4 mb-4">
+                <div class="text-[10px] font-bold text-emerald-600 mb-2 uppercase tracking-widest">AIからの今日のアドバイス</div>
+                <p id="mc-proposal-message" class="text-sm font-medium text-emerald-900 leading-relaxed mb-4"></p>
+
+                <!-- 提案アクションリスト (チップ表示) -->
+                <div id="mc-proposal-actions" class="flex flex-wrap gap-2 mb-4"></div>
+
+                <button id="mc-proposal-approve-btn"
+                  class="w-full bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm shadow-lg active:scale-95 transition-all">
+                  このプランを反映する
+                </button>
+              </div>
+
+              <button id="mc-btn-create-proposal" onclick="MoveCare.createProposal()"
+                class="w-full py-3 text-xs font-bold text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-50 flex items-center justify-center gap-2 mb-2">
+                <span>🔄</span> 別の提案を作成する（再試行）
+              </button>
+
+            </div>
+
+            <!-- ★ 週間進捗 (再設置: 共通) -->
+            <div class="mt-6 pt-6 border-t border-slate-100">
+              <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider">今週の運動量（目標 23 METs・時）</div>
+              <div class="flex items-center gap-4">
+                <div class="relative w-12 h-12">
+                  <svg viewBox="0 0 36 36" class="w-full h-full transform -rotate-90">
+                    <path class="text-slate-100" stroke-width="4" stroke="currentColor" fill="none"
+                      d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                    <path id="weekly-progress-ring" class="text-emerald-500 transition-all duration-1000 ease-out"
+                      stroke-width="4" stroke-dasharray="0, 100" stroke-linecap="round" stroke="currentColor"
+                      fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                  </svg>
+                  <div id="weekly-progress-label"
+                    class="absolute inset-0 flex items-center justify-center text-[8px] font-black text-emerald-600">0%
+                  </div>
+                </div>
+                <div>
+                  <div id="home-weekly-mets" class="text-base font-black text-slate-700 leading-none">0.0 / 23 METs・h
+                  </div>
+                  <div class="text-[8px] font-bold text-slate-400 mt-1 uppercase tracking-tighter">Weekly Achievement
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- ★ おすすめ活動 (V110復元) -->
+            <div class="mt-8">
+              <div class="text-[10px] font-bold text-slate-400 mb-3 uppercase tracking-wider">今のあなたにおすすめの活動</div>
+              <div id="home-recommended-activities" class="grid grid-cols-3 gap-2">
+                <!-- JS Generated -->
+              </div>
+              <!-- Restore "Show All Activities" Button V144 -->
+              <button onclick="switchScreen('screen-activities')"
+                class="w-full mt-3 py-3 text-xs font-bold text-emerald-600 bg-emerald-50 rounded-xl hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2">
+                <span>📋</span> すべての活動から選ぶ（メッツ表）
+              </button>
+            </div>
+            <!-- Summary & Fitbit Section (Moved Inside V135) -->
+            <div class="mt-8 pt-6 border-t border-slate-100">
+              <!-- Fitbit Activity -->
+              <div id="home-fitbit-steps-container"
+                class="hidden mb-4 p-4 bg-teal-50 rounded-2xl border border-teal-100">
+                <div class="text-[10px] font-bold text-teal-600 uppercase tracking-widest mb-3 flex items-center gap-2">
+                  <span>⌚</span> Fitbit Activity
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                  <div>
+                    <div class="text-[9px] text-slate-400 mb-1">今日の歩数</div>
+                    <div id="fitbit-steps-today" class="text-2xl font-black text-slate-800">--</div>
+                  </div>
+                  <div class="border-l border-teal-200 pl-4">
+                    <div class="text-[9px] text-slate-400 mb-1">昨日の歩数</div>
+                    <div id="fitbit-steps-yesterday" class="text-xl font-bold text-slate-500">--</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Today's Summary -->
+              <div class="grid grid-cols-2 gap-2">
+                <div class="p-3 bg-slate-50 rounded-xl">
+                  <div class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mb-1">TODAY LOG</div>
+                  <div id="home-summary-mets" class="text-xl font-bold text-emerald-600">0.00</div>
+                  <div class="text-[9px] text-gray-400">METs・時</div>
+                </div>
+                <div class="p-3 bg-slate-50 rounded-xl">
+                  <div class="text-[9px] font-bold text-slate-400 uppercase tracking-tighter mb-1">CALORIE</div>
+                  <div id="home-summary-kcal" class="text-xl font-bold text-orange-500">0</div>
+                  <div class="text-[9px] text-gray-400">kcal</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Retry Button (Moved to very bottom of card) -->
+            <div class="mt-8 text-center pb-2">
+              <button id="mc-btn-retry-input-bottom" onclick="MoveCare.retryProposal()"
+                class="w-full py-3 text-xs text-slate-300 font-bold hover:text-emerald-500 transition-colors hidden">
+                体調を入力し直す
+              </button>
+            </div>
+
+          </div> <!-- Close Main App Card -->
+
+          <!-- Admin Message (Feedforward) -->
+          <div id="home-admin-message"
+            class="hidden mt-2 mb-2 p-2 bg-yellow-50 border border-yellow-200 rounded-lg shadow-sm">
+            <div class="flex items-start gap-2">
+              <span class="text-xl">📩</span>
+              <div>
+                <div class="text-[10px] font-bold text-yellow-800 mb-0.5">管理者からのメッセージ</div>
+                <p id="home-admin-message-text" class="text-[10px] text-slate-700 whitespace-pre-wrap leading-tight">
+                </p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-plan -->
+        <section id="screen-plan" class="app-screen hidden">
+          <div class="app-card !p-4">
+            <div class="flex justify-between items-start mb-4">
+              <div>
+                <div class="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-0.5">Schedule</div>
+                <div id="plan-title" class="text-lg font-bold text-slate-800">1日のスケジュール</div>
+              </div>
+              <button onclick="openScheduleSettings()"
+                class="text-xs font-bold text-emerald-600 flex items-center gap-1 bg-emerald-50 px-2 py-1 rounded-lg">
+                ⚙️ 設定
+              </button>
+            </div>
+
+            <button
+              class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-emerald-100 mb-6 flex items-center justify-center gap-2 active:scale-[0.98] transition-all text-sm"
+              onclick="MoveCare.generateFromHabits()">
+              <span>🤖</span> 習慣からAIプランを生成
+            </button>
+
+            <div id="plan-body" class="relative">
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-activities (追加) -->
+        <section id="screen-activities" class="app-screen hidden">
+          <div class="app-card">
+            <div class="app-card-title flex justify-between items-center">
+              <span>活動選択（メッツ表）</span>
+              <button onclick="switchScreen('screen-plan')" class="text-[10px] text-gray-400">✕ 戻る</button>
+            </div>
+            <div class="mb-3 flex gap-1 overflow-x-auto pb-1 no-scrollbar">
+              <button class="activity-filter-chip selected" onclick="filterMetsTable('all', this)">すべて表示</button>
+              <button class="activity-filter-chip" onclick="filterMetsTable('lifestyle', this)">生活活動</button>
+              <button class="activity-filter-chip" onclick="filterMetsTable('exercise', this)">運動（スポーツ）</button>
+            </div>
+            <div id="mets-table-container" class="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+              <!-- METsリストがここに生成される -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-program -->
+        <section id="screen-program" class="app-screen hidden">
+          <!-- 1. Scheduled Program (Must Do) -->
+          <div id="scheduled-section" class="mb-6">
+            <div class="app-card-title text-sm mb-2 text-blue-700 border-l-4 border-blue-500 pl-2">今日の運動プログラム</div>
+            <div id="scheduled-list" class="grid grid-cols-1 gap-3 mb-4">
+              <!-- Scheduled Items -->
+              <div class="text-xs text-gray-400 text-center py-4">今日のプログラムはありません</div>
+            </div>
+          </div>
+
+          <!-- 2. Anytime Access (Can Do) -->
+          <div id="anytime-section" class="mb-6">
+            <div class="app-card-title text-sm mb-2 text-emerald-700 border-l-4 border-emerald-500 pl-2">いつでもできる
+              (Anytime)</div>
+            <div id="anytime-list" class="grid grid-cols-2 gap-3 mb-4"></div>
+          </div>
+
+          <!-- Library (Optional / Hidden by default or just extra) -->
+          <!-- User asked to prioritize Program/Anytime, so avoiding generic list unless needed -->
+        </section>
+
+        <!-- ▼ screen-measure -->
+        <section id="screen-measure" class="app-screen hidden">
+          <div class="app-card">
+            <div class="app-card-title flex justify-between items-center">
+              <span>Squat Master</span>
+              <button onclick="switchScreen('screen-home')" class="text-[10px] text-gray-400">✕ 閉じる</button>
+            </div>
+            <div class="w-full h-[600px] rounded-2xl overflow-hidden border">
+              <iframe src="./Exgame12.html" class="w-full h-full border-none"></iframe>
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-hiit (Added for habit-B integration) -->
+        <section id="screen-hiit" class="app-screen hidden">
+          <div class="app-card h-[calc(100vh-160px)] flex flex-col p-0 overflow-hidden">
+            <div class="p-4 flex justify-between items-center bg-white border-b">
+              <span class="font-bold text-sm">habit-B タイマー</span>
+              <button onclick="switchScreen('screen-program')"
+                class="bg-slate-100 px-3 py-1 rounded-full text-[10px] font-bold">← アプリへ戻る</button>
+            </div>
+            <iframe id="hiit-iframe" src="about:blank" class="flex-1 w-full border-none"></iframe>
+          </div>
+        </section>
+
+        <!-- ▼ screen-custom-timer (New Custom Timer App) -->
+        <section id="screen-custom-timer" class="app-screen hidden">
+          <div class="app-card">
+            <div class="flex justify-between items-center mb-6">
+              <h2 class="text-lg font-bold">カスタムタイマー</h2>
+              <button onclick="switchScreen('screen-program')" class="text-gray-400">✕</button>
+            </div>
+
+            <!-- Settings View -->
+            <div id="timer-settings" class="space-y-6">
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="text-[10px] font-bold text-gray-400 block mb-1">運動時間 (秒)</label>
+                  <input type="number" id="timer-work-sec" value="20"
+                    class="w-full border rounded-xl p-3 text-center text-xl font-bold">
+                </div>
+                <div>
+                  <label class="text-[10px] font-bold text-gray-400 block mb-1">休息時間 (秒)</label>
+                  <input type="number" id="timer-rest-sec" value="10"
+                    class="w-full border rounded-xl p-3 text-center text-xl font-bold">
+                </div>
+              </div>
+              <div>
+                <label class="text-[10px] font-bold text-gray-400 block mb-1">セット数</label>
+                <input type="number" id="timer-sets" value="8"
+                  class="w-full border rounded-xl p-3 text-center text-xl font-bold">
+              </div>
+
+              <!-- BGM Selection -->
+              <div class="bg-slate-50 p-4 rounded-2xl border border-dashed border-slate-200">
+                <label class="text-[10px] font-bold text-slate-500 block mb-2 text-center">BGMを選択（端末から再生）</label>
+                <input type="file" id="timer-bgm-input" accept="audio/*" class="w-full text-[10px]">
+                <audio id="timer-bgm-player" controls class="w-full mt-3 hidden"></audio>
+              </div>
+
+              <button class="btn-primary w-full py-4 text-lg" onclick="startCustomTimer()">タイマーをスタート</button>
+            </div>
+
+            <!-- Active View -->
+            <div id="timer-active" class="hidden text-center py-10">
+              <div id="timer-status-label" class="text-sm font-black text-pink-500 mb-2 tracking-widest uppercase">READY
+              </div>
+              <div id="timer-countdown" class="text-8xl font-black text-slate-800 mb-6">00</div>
+              <div class="flex justify-center items-center gap-4 text-slate-400">
+                <span class="text-xs">SET</span>
+                <span id="timer-current-set" class="text-3xl font-black text-slate-700">1</span>
+                <span class="text-xs">/</span>
+                <span id="timer-total-sets" class="text-xl font-bold">8</span>
+              </div>
+              <div class="mt-8 flex gap-3">
+                <button id="timer-pause-btn" class="btn-secondary flex-1" onclick="toggleTimerPause()">一時停止</button>
+                <button class="btn-secondary border-red-100 text-red-500 flex-1"
+                  onclick="cancelCustomTimer()">終了</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-complete (追加) -->
+        <section id="screen-complete" class="app-screen hidden">
+          <div class="app-card text-center py-10">
+            <div class="text-xl font-bold text-slate-800 mb-2">ナイス・ムーブ！</div>
+            <p id="complete-activity-text" class="text-sm text-slate-500 mb-8">アクティビティ完了！</p>
+            <div class="space-y-2 px-4">
+              <button class="btn-primary w-full" onclick="switchScreen('screen-plan'); setActiveNav('nav-plan');">
+                続けて活動を行う
+              </button>
+              <button class="btn-secondary w-full" onclick="switchScreen('screen-home'); setActiveNav('nav-home');">
+                ホームへ戻る
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-tools -->
+        <section id="screen-tools" class="app-screen hidden">
+          <div class="app-card">
+            <div class="app-card-title">VO₂max トラッカー</div>
+            <form class="space-y-3" onsubmit="handleVo2Submit(event)">
+              <div class="grid grid-cols-2 gap-2">
+                <select id="vo2-source" class="border rounded-xl px-2 py-2 text-xs">
+                  <option value="CS30">CS-30 推定</option>
+                  <option value="direct">直接入力</option>
+                </select>
+                <input id="vo2-date" type="date" class="border rounded-xl px-2 py-2 text-xs" />
+              </div>
+              <div id="vo2-cs30-block" class="grid grid-cols-2 gap-2">
+                <input type="number" id="vo2-cs30-rep" placeholder="回数" class="border rounded-xl px-2 py-2 text-xs">
+                <input type="number" id="vo2-age" placeholder="年齢" class="border rounded-xl px-2 py-2 text-xs">
+              </div>
+              <div id="vo2-cs30-extra-block" class="grid grid-cols-2 gap-2">
+                <select id="vo2-sex" class="border rounded-xl px-2 py-2 text-xs">
+                  <option value="male">男性</option>
+                  <option value="female">女性</option>
+                </select>
+                <input type="number" id="vo2-weight" placeholder="体重(kg)" class="border rounded-xl px-2 py-2 text-xs">
+                <input type="number" id="vo2-height" placeholder="身長(cm)" class="border rounded-xl px-2 py-2 text-xs">
+              </div>
+
+              <!-- ★ 三軸モデル用入力 (移動: 基本情報の直後へ) -->
+              <div class="grid grid-cols-2 gap-2">
+                <div>
+                  <label class="text-[9px] text-gray-400 font-bold block mb-1">安静時心拍数</label>
+                  <input type="number" id="mets-hr-rest" placeholder="bpm" value="70"
+                    class="w-full border rounded-xl px-2 py-2 text-xs">
+                </div>
+                <div>
+                  <label class="text-[9px] text-gray-400 font-bold block mb-1">最大心拍数 (任意)</label>
+                  <input type="number" id="mets-hr-max" placeholder="220-年齢"
+                    class="w-full border rounded-xl px-2 py-2 text-xs">
+                </div>
+              </div>
+
+              <select id="vo2-mode" class="w-full border rounded-xl px-2 py-2 text-xs">
+                <option value="general">一般</option>
+                <option value="cancer">がんサバイバー</option>
+              </select>
+
+              <button type="submit" class="btn-primary">この内容で記録する</button>
+
+              <div id="vo2-direct-block" class="hidden">
+                <input type="number" step="0.1" id="vo2-direct" placeholder="VO₂max"
+                  class="w-full border rounded-xl px-2 py-2 text-xs">
+              </div>
+
+              <div id="tool-evidence" class="evidence-box hidden">
+                <div class="evidence-title">Calculation Evidence</div>
+                <div id="evidence-content" class="evidence-content">
+                  推正式のエビデンス情報がここに表示されます。
+                </div>
+              </div>
+
+              <!-- ★ 改良版: 心拍ゾーン & 相対メッツ (スライダー形式) -->
+              <div id="extra-tools" class="space-y-4 mt-6 border-t pt-6 hidden">
+                <div class="flex justify-between items-center mb-2">
+                  <div class="app-card-title text-sm">運動強度シミュレーター</div>
+                  <div id="current-intensity-pct"
+                    class="text-xs font-black text-emerald-600 bg-emerald-50 px-2 py-1 rounded-lg">40% VO₂max</div>
+                </div>
+
+                <input type="range" id="intensity-slider" min="20" max="100" step="5" value="40"
+                  class="w-full accent-emerald-500 h-2 bg-gray-200 rounded-lg cursor-pointer mb-6"
+                  oninput="renderExtraTools()" />
+
+                <div class="grid grid-cols-2 gap-3">
+                  <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-center">
+                    <div class="text-[9px] text-gray-400 font-bold mb-1 uppercase tracking-widest">Target Heart Rate
+                    </div>
+                    <div class="text-2xl font-black text-slate-800"><span id="target-hr-val">--</span> <span
+                        class="text-[10px] text-slate-400 font-normal">bpm</span></div>
+                    <div id="hr-zone-label" class="text-[9px] font-bold mt-1 text-emerald-600">低強度</div>
+                  </div>
+                  <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm text-center">
+                    <div class="text-[9px] text-gray-400 font-bold mb-1 uppercase tracking-widest">Relative METs</div>
+                    <div class="text-2xl font-black text-emerald-600"><span id="target-rel-mets">--</span> <span
+                        class="text-[10px] text-emerald-400 font-normal">METs</span></div>
+                    <div class="text-[9px] text-slate-400 mt-1">その人にとっての強度</div>
+                  </div>
+                </div>
+              </div>
+            </form>
+            <div class="mt-4 p-3 bg-emerald-50 rounded-xl flex justify-between items-center text-xs">
+              <div id="vo2-latest-label">記録なし</div>
+              <div id="vo2-latest-value" class="text-xl font-bold text-emerald-700">--</div>
+            </div>
+            <div id="vo2-latest-mets" class="text-[10px] text-emerald-600 font-bold text-right px-1 mb-2">-- METs 相当
+            </div>
+
+            <!-- ★ Alcazar式パワー算出 & 高度診断 (追加) -->
+            <div id="power-report" class="mt-4 p-4 rounded-2xl bg-slate-900 text-white hidden">
+              <div class="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Advanced Performance
+                Report</div>
+              <div class="grid grid-cols-2 gap-4 items-center">
+                <div>
+                  <div class="text-[9px] text-slate-500">推定下肢筋パワー</div>
+                  <div class="text-2xl font-black text-orange-400"><span id="power-value">--</span> <span
+                      class="text-[10px]">W/kg</span></div>
+                </div>
+                <div class="h-20"><canvas id="power-chart"></canvas></div>
+              </div>
+              <p id="power-desc" class="text-[9px] text-slate-400 mt-2 leading-relaxed border-t border-slate-800 pt-2">
+              </p>
+            </div>
+
+            <div class="h-40 mt-3"><canvas id="vo2-chart"></canvas></div>
+          </div>
+        </section>
+
+        <!-- ▼ screen-dev (Added for predictvo2.html integration) -->
+        <section id="screen-dev" class="app-screen hidden">
+          <div class="app-card overflow-hidden !p-0" style="height: 80vh;">
+            <iframe id="dev-iframe" src="about:blank" class="w-full h-full border-0"></iframe>
+          </div>
+          <div class="px-4 mt-4">
+            <button class="btn-secondary w-full" onclick="switchScreen('screen-tools'); setActiveNav('nav-tools');">
+              ← ツール画面に戻る
+            </button>
+          </div>
+        </section>
+
+        <!-- ▼ screen-cloud -->
+        <section id="screen-cloud" class="app-screen hidden">
+          <div class="app-card">
+            <div class="app-card-title flex justify-between items-center">
+              <span>アカウント設定</span>
+              <button onclick="switchScreen('screen-home')" class="text-[10px] text-gray-400">✕ 閉じる</button>
+            </div>
+            <div class="flex flex-col items-center py-6">
+              <div class="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl mb-2">👤</div>
+              <div class="font-bold">demo_pt (ゲスト)</div>
+
+              <!-- Fitbit Connect Button (Static) -->
+              <button id="btn-fitbit-connect"
+                class="mt-4 btn-secondary text-teal-600 border-teal-100 flex items-center gap-2"
+                onclick="MoveCare.connectFitbit()">
+                Fitbitアカウントと連携する
+              </button>
+
+              <button class="mt-2 btn-secondary text-yellow-600 border-yellow-100 flex items-center gap-2"
+                onclick="requestNotificationPermission()">
+                🔔 プッシュ通知を有効にする
+              </button>
+            </div>
+            <button class="btn-secondary text-red-500 border-red-100" onclick="MoveCare.logout()">ログアウト</button>
+
+            <!-- Moved Footer Content Here V136 -->
+            <div class="mt-8 text-center text-[10px] text-slate-300 pb-4">
+              &copy; 2026 Exercise Oncology Lab. <br>All rights reserved.
+              <div class="mt-4">
+                <button class="text-slate-400 underline decoration-dotted" onclick="openDevTool()">
+                  開発者用ツールを起動
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Global Footer Removed -->
+      </main>
+
+      <!-- ===== ダイアログ / モーダル ===== -->
+      <div id="muchiko-container"
+        class="fixed top-1/2 left-1/2 z-[9998] hidden transition-all duration-500 transform -translate-x-1/2 -translate-y-1/2">
+        <div class="relative bg-white p-3 rounded-2xl shadow-2xl border-2 border-pink-400 max-w-[180px] cursor-pointer"
+          onclick="document.getElementById('modal-muchiko').classList.remove('hidden')">
+          <img id="muchiko-img" src="muchiko.png" class="w-20 h-20 mx-auto object-contain" alt="ムチコ"
+            onerror="this.src='https://placehold.jp/24/ec4899/ffffff/100x100.png?text=ムチコ';">
+          <p id="muchiko-bubble" class="text-[10px] font-bold text-gray-700 mt-2 text-center leading-tight">タップしてね！</p>
+          <div class="absolute -bottom-2 right-8 w-4 h-4 bg-white border-b-2 border-r-2 border-pink-400 rotate-45">
+          </div>
+        </div>
+      </div>
+
+      <div id="modal-muchiko"
+        class="fixed inset-0 z-[9999] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm hidden"
+        onclick="this.classList.add('hidden')">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-fade-in text-center relative"
+          onclick="event.stopPropagation()">
+
+          <button class="absolute top-4 right-4 text-gray-400 text-xl"
+            onclick="document.getElementById('modal-muchiko').classList.add('hidden')">✕</button>
+
+          <div class="mb-4">
+            <img src="muchiko.png" alt="ムチコ" class="w-40 h-40 mx-auto object-contain animate-bounce"
+              onerror="this.src='https://placehold.jp/24/ec4899/ffffff/200x200.png?text=ムチコ';">
+          </div>
+
+          <div class="text-lg font-bold text-pink-600 mb-1">ムチコ登場！</div>
+          <p id="muchiko-message" class="text-sm text-gray-700 leading-relaxed mb-4">
+            今日は本気モードの日！<br>少しハードなメニューを一緒にやりましょう。
+          </p>
+
+          <div class="bg-pink-50 rounded-2xl p-4 border border-pink-100 mb-4">
+            <div class="text-[10px] text-pink-500 font-bold mb-1 uppercase tracking-wider">Today's Target</div>
+            <div id="muchiko-target" class="text-sm font-bold text-pink-700">HIITタイマー or スクワット</div>
+          </div>
+
+          <div class="space-y-3">
+            <button
+              class="w-full bg-pink-600 hover:bg-pink-700 text-white font-bold py-3 rounded-xl shadow-lg active:scale-95 transition-all text-sm"
+              onclick="MoveCare.switchScreen('screen-measure'); document.getElementById('modal-muchiko').classList.add('hidden')">
+              スクワットマスターへ
+            </button>
+
+            <button
+              class="w-full border-2 border-pink-200 text-pink-700 font-bold py-3 rounded-xl hover:bg-pink-50 active:scale-95 transition-all text-sm"
+              onclick="MoveCare.switchScreen('screen-program'); if(typeof renderAnytime === 'function') renderAnytime('HIIT'); document.getElementById('modal-muchiko').classList.add('hidden')">
+              HIITタイマーへ
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- スケジュール設定モーダル (V92) -->
+      <div id="modal-config"
+        class="fixed inset-0 z-[10000] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl animate-in fade-in zoom-in duration-300">
+          <div class="text-lg font-bold text-slate-800 mb-4 text-center">表示範囲の設定</div>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase">Start
+                Hour</label>
+              <input id="config-start-hour" type="number" min="0" max="23"
+                class="w-full text-2xl font-black border-b-2 border-slate-100 py-1 focus:border-emerald-500 outline-none">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 mb-1 tracking-widest uppercase">End Hour</label>
+              <input id="config-end-hour" type="number" min="1" max="24"
+                class="w-full text-2xl font-black border-b-2 border-slate-100 py-1 focus:border-emerald-500 outline-none">
+            </div>
+            <div class="flex gap-2 pt-4">
+              <button onclick="document.getElementById('modal-config').classList.add('hidden')"
+                class="flex-1 bg-slate-100 text-slate-600 py-3 rounded-xl font-bold text-sm active:scale-95 transition-all">戻る</button>
+              <button onclick="MoveCare.saveConfigFromModal()"
+                class="flex-1 bg-emerald-600 text-white py-3 rounded-xl font-bold text-sm shadow-lg shadow-emerald-100 active:scale-95 transition-all">保存する</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="modal-plan-input"
+        class="fixed inset-0 z-[10001] flex items-center justify-center p-6 bg-slate-900/40 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-300">
+          <div class="flex justify-between items-center mb-6">
+            <div class="text-lg font-bold text-slate-800">この活動をやりますか？</div>
+            <button onclick="document.getElementById('modal-plan-input').classList.add('hidden')"
+              class="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-slate-400">✕</button>
+          </div>
+
+          <div class="space-y-6">
+            <!-- 活動選択チップ -->
+            <div>
+              <label class="block text-[10px] font-bold text-slate-400 mb-3 tracking-widest uppercase">Select
+                Activity</label>
+              <div id="plan-activity-chips" class="flex flex-wrap gap-2 mb-3">
+                <!-- JSで生成 -->
+              </div>
+              <input id="plan-input-title" type="text" placeholder="または直接入力..."
+                class="w-full text-lg font-bold border-b-2 border-slate-100 py-1 focus:border-emerald-500 outline-none transition-all">
+            </div>
+
+            <!-- 時間設定 (開始〜終了 / セレクトボックス) -->
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 mb-2 tracking-widest uppercase">Start
+                  Time</label>
+                <div class="flex items-center justify-center gap-1 p-3 bg-slate-50 rounded-2xl">
+                  <select id="plan-input-start-h" onchange="MoveCare.syncPlanModalTimes()"
+                    class="bg-transparent text-xl font-black outline-none text-slate-700"></select>
+                  <span class="font-bold text-slate-300">:</span>
+                  <select id="plan-input-start-m" onchange="MoveCare.syncPlanModalTimes()"
+                    class="bg-transparent text-xl font-black outline-none text-slate-700"></select>
+                </div>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 mb-2 tracking-widest uppercase">End
+                  Time</label>
+                <div class="flex items-center justify-center gap-1 p-3 bg-slate-50 rounded-2xl">
+                  <select id="plan-input-end-h" onchange="MoveCare.syncPlanModalTimes()"
+                    class="bg-transparent text-xl font-black outline-none text-emerald-600"></select>
+                  <span class="font-bold text-slate-300">:</span>
+                  <select id="plan-input-end-m" onchange="MoveCare.syncPlanModalTimes()"
+                    class="bg-transparent text-xl font-black outline-none text-emerald-600"></select>
+                </div>
+              </div>
+            </div>
+
+            <button onclick="MoveCare.savePlanFromModal()"
+              class="w-full bg-emerald-600 text-white py-4 rounded-2xl font-bold shadow-lg shadow-emerald-100 active:scale-[0.98] transition-all">
+              スケジュールに追加
+            </button>
+          </div>
+        </div>
+      </div>
+
+
+      <div id="duration-modal"
+        class="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm hidden">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-xs shadow-2xl scale-in">
+          <div class="text-center font-bold text-lg mb-4 text-slate-800">何分間行いましたか？</div>
+          <input id="duration-input" type="number" value="5"
+            class="w-full border rounded-xl p-3 text-center text-xl font-bold mb-4" />
+          <div class="flex gap-2">
+            <button class="btn-secondary flex-1"
+              onclick="document.getElementById('duration-modal').classList.add('hidden')">キャンセル</button>
+            <button class="btn-primary flex-1" onclick="confirmDuration()">記録完了</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ★ Video Modal (New) -->
+      <div id="video-modal" class="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 hidden"
+        onclick="closeVideoModal()">
+        <div class="w-full max-w-md p-4 relative" onclick="event.stopPropagation()">
+          <button class="absolute -top-10 right-4 text-white text-xl" onclick="closeVideoModal()">✕</button>
+          <div class="aspect-video w-full bg-black rounded-xl overflow-hidden shadow-2xl">
+            <iframe id="video-iframe" class="w-full h-full" src="" title="Video" frameborder="0"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowfullscreen></iframe>
+          </div>
+          <p class="text-xs text-gray-400 mt-4 text-center">画面外タップで閉じる</p>
+        </div>
+      </div>
+
+      <!-- ★ Loading Splash (New) -->
+      <div id="splash-screen"
+        class="fixed inset-0 z-[200] flex flex-col items-center justify-center bg-slate-50 transition-opacity duration-500">
+        <div
+          class="w-24 h-24 bg-emerald-600 rounded-3xl flex items-center justify-center text-white text-5xl font-bold shadow-emerald-200 shadow-xl animate-pulse">
+          E
+        </div>
+        <p class="mt-4 text-emerald-600 font-bold tracking-widest text-sm">LOADING...</p>
+      </div>
+
+      <!-- ★ ログインモーダル (追加) -->
+      <!-- ★ ログインモーダル (Hidden by Default) -->
+      <div id="login-modal" class="fixed inset-0 z-[100] flex items-center justify-center bg-slate-50 hidden">
+        <div class="w-full max-w-sm p-8 bg-white rounded-3xl shadow-xl text-center">
+          <div
+            class="w-20 h-20 bg-emerald-600 rounded-2xl flex items-center justify-center text-white text-4xl font-bold mx-auto mb-6 shadow-emerald-200 shadow-lg">
+            E</div>
+          <h1 class="text-2xl font-bold text-slate-800 mb-2">Exercise Oncology</h1>
+          <p class="text-sm text-slate-500 mb-8">運動療法サポートアプリ</p>
+
+          <div class="text-left mb-6">
+            <label class="block text-xs font-bold text-slate-400 mb-1">被験者ID</label>
+            <input id="login-input-id" type="text" placeholder="IDを入力 (例: 1)"
+              class="w-full text-lg font-bold border-b-2 border-slate-200 py-2 focus:border-emerald-500 outline-none transition-colors">
+          </div>
+
+          <button id="login-btn" onclick="MoveCare.handleLogin()"
+            class="w-full bg-emerald-600 text-white py-4 rounded-xl font-bold shadow-lg shadow-emerald-200 active:scale-95 transition-all">
+            ログインして開始
+          </button>
+
+          <button id="btn-line-relogin" onclick="MoveCare.retryLineLogin()"
+            class="w-full bg-[#06C755] text-white py-3 mt-3 rounded-xl font-bold shadow-lg shadow-green-100 active:scale-95 transition-all flex items-center justify-center gap-2">
+            LINEアカウントで再開
+          </button>
+          <p id="login-error" class="text-red-500 text-xs mt-4 hidden">IDが見つかりません</p>
+        </div>
+      </div>
+
+      <!-- ===== ボトムナビ ===== -->
+      <nav class="bottom-nav">
+        <div class="bottom-nav-inner">
+          <!-- JS Generated -->
+        </div>
+      </nav>
+    </div>
+  </div>
+
+  <div id="toast-container" class="fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] pointer-events-none space-y-2">
+  </div>
+
+  <script>
+    (function () {
+      console.log("Startup sequence initialized.");
+    })();
+  </script>
+
+  <!-- Modal: Activity Choice for Pending slots (V119) -->
+  <div id="modal-pending-choice"
+    class="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
+    <div
+      class="bg-white w-full max-w-sm rounded-3xl overflow-hidden animate-in fade-in zoom-in duration-300 shadow-2xl">
+      <div class="p-6">
+        <div class="text-xs font-bold text-slate-400 mb-2 uppercase tracking-widest text-center">活動タイプを選択</div>
+        <h3 class="text-lg font-extrabold text-slate-800 text-center mb-6 leading-tight">この時間にどのような活動をしますか？</h3>
+
+        <div class="space-y-3">
+          <button onclick="MoveCare.reflectPendingChoice('High')"
+            class="w-full bg-orange-50 hover:bg-orange-100 border border-orange-200 p-4 rounded-2xl flex items-center gap-4 transition-all active:scale-95 group">
+            <div
+              class="w-12 h-12 bg-orange-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg ring-4 ring-orange-100 group-hover:rotate-6 transition-transform">
+              🔥</div>
+            <div class="text-left">
+              <div class="font-black text-slate-800 text-base">しっかり動く</div>
+              <div class="text-[10px] text-orange-600 font-bold uppercase tracking-tighter">中〜高強度（早歩き・スクワット等）</div>
+            </div>
+          </button>
+
+          <button onclick="MoveCare.reflectPendingChoice('Medium')"
+            class="w-full bg-blue-50 hover:bg-blue-100 border border-blue-200 p-4 rounded-2xl flex items-center gap-4 transition-all active:scale-95 group">
+            <div
+              class="w-12 h-12 bg-blue-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg ring-4 ring-blue-100 group-hover:scale-110 transition-transform">
+              👟</div>
+            <div class="text-left">
+              <div class="font-black text-slate-800 text-base">ほどほどに動く</div>
+              <div class="text-[10px] text-blue-600 font-bold uppercase tracking-tighter">低〜中強度（散歩・家事等）</div>
+            </div>
+          </button>
+
+          <button onclick="MoveCare.reflectPendingChoice('Low')"
+            class="w-full bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 p-4 rounded-2xl flex items-center gap-4 transition-all active:scale-95 group">
+            <div
+              class="w-12 h-12 bg-emerald-500 text-white rounded-xl flex items-center justify-center text-2xl shadow-lg ring-4 ring-emerald-100 group-hover:-rotate-6 transition-transform">
+              🧘</div>
+            <div class="text-left">
+              <div class="font-black text-slate-800 text-base">ゆったりストレッチ</div>
+              <div class="text-[10px] text-emerald-600 font-bold uppercase tracking-tighter">低強度（ヨガ・呼吸法・柔軟等）</div>
+            </div>
+          </button>
+        </div>
+
+        <button onclick="document.getElementById('modal-pending-choice').classList.add('hidden')"
+          class="w-full mt-6 py-3 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">
+          キャンセル
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 時間確認モーダル (V130) -->
+  <div id="modal-duration-confirm"
+    class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4">
+    <div class="bg-white w-full max-w-sm rounded-3xl p-6 shadow-2xl transform transition-all scale-100">
+      <div class="text-center mb-6">
+        <div
+          class="inline-flex items-center justify-center w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 mb-4">
+          <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+          </svg>
+        </div>
+        <h3 class="text-lg font-bold text-slate-800">活動時間の確認</h3>
+        <p class="text-xs text-slate-500 mt-2">予定している活動時間を決定してください。</p>
+      </div>
+
+      <div class="flex items-center justify-center gap-4 mb-8">
+        <button onclick="window.adjustDuration(-5)"
+          class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 active:scale-95 transition-transform">-5</button>
+        <div class="relative w-24">
+          <input type="number" id="confirm-duration-input"
+            class="w-full text-center text-3xl font-black text-slate-800 border-b-2 border-emerald-500 focus:outline-none py-2"
+            value="15">
+          <span class="absolute right-0 bottom-3 text-xs text-slate-400 font-bold">分</span>
+        </div>
+        <button onclick="window.adjustDuration(5)"
+          class="w-10 h-10 rounded-full bg-slate-100 text-slate-600 font-bold hover:bg-slate-200 active:scale-95 transition-transform">+5</button>
+      </div>
+
+      <div class="grid grid-cols-2 gap-3">
+        <button onclick="MoveCare.closeDurationConfirmModal()"
+          class="py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-sm hover:bg-slate-200 transition-colors">キャンセル</button>
+        <button onclick="MoveCare.saveDurationConfirm()"
+          class="py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-200 hover:bg-emerald-600 active:scale-95 transition-all">決定する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main App Script -->
+  <script src="app.js?v=20260210_V177"></script>
+  <script>
+    // Aggressive Cache Busting for Service Workers
+    try {
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.getRegistrations().then(function (registrations) {
+          for (let registration of registrations) {
+            registration.unregister().then(() => console.log('SW unregistered successfully'));
+          }
+        });
+      }
+      if ('caches' in window) {
+        caches.keys().then(function (names) {
+          for (let name of names) caches.delete(name);
+          console.log('All caches cleared');
+        });
+      }
+    } catch (e) {
+      console.warn("Cache Cleanup Error", e);
+    }
+    // Force reload if we suspect we are trapped in a stale SW
+    // But let's just log for now so we don't loop
+
+  </script>
+</body>
+
+</html>

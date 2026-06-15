@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>運動プログラム・メニュー</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&display=swap');
+        
+        /* 基本設定：余白をゼロにして幅を100%にする */
+        body, html { 
+            font-family: 'Noto Sans JP', sans-serif; 
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            overflow-x: hidden;
+        }
+
+        .accordion-content { transition: max-height 0.3s ease-out, padding 0.3s ease; max-height: 0; overflow: hidden; }
+        .accordion-open { max-height: 3000px; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-700 min-h-screen">
+
+    <header class="bg-teal-600 text-white p-4 shadow-md sticky top-0 z-50">
+        <div class="w-full max-w-5xl mx-auto flex items-center justify-between px-2">
+            <h1 class="text-lg font-bold">運動プログラム</h1>
+            <span class="text-xs bg-teal-700 px-2 py-1 rounded">全6コース</span>
+        </div>
+    </header>
+
+    <main class="w-full max-w-5xl mx-auto p-4 space-y-4">
+
+        <div class="bg-white p-4 rounded-lg shadow-sm border border-slate-200 mb-6">
+            <h2 class="font-bold text-teal-700 mb-2">はじめに</h2>
+            <p class="text-sm text-slate-600 leading-relaxed">
+                このプログラムはコース1から順に強度が上がっていきます。<br>
+                まずは<b>「解説・確認」</b>の動画を見て動きを確認し、その後に<b>「実践」</b>の動画に合わせて体を動かしましょう。
+            </p>
+            <div class="mt-3 p-3 bg-red-50 text-red-800 text-sm rounded border border-red-100">
+                <b>※「動画を再生できません」と出る場合</b><br>
+                動画の下にある緑色の<b>「YouTubeアプリで見る」</b>ボタンを押してください。確実に再生されます。
+            </div>
+        </div>
+
+        <div id="course-list" class="space-y-3">
+            </div>
+
+    </main>
+
+    <footer class="text-center text-xs text-slate-400 p-6 mt-8">
+        <p>推奨環境：Wi-Fi環境での再生をおすすめします。</p>
+    </footer>
+
+    <script>
+        // Data Structure（データはそのまま）
+        const courses = [
+            {
+                id: 1,
+                title: "コース 1",
+                desc: "運動に慣れるための最初のステップです。",
+                videos: [
+                    { type: "check", label: "動きの確認", id: "vvoh9yFWjY8" },
+                    { type: "main", label: "実践トレーニング", id: "6D6A6FTxK58" }
+                ]
+            },
+            {
+                id: 2,
+                title: "コース 2",
+                desc: "少し動きに変化を加えます。",
+                videos: [
+                    { type: "check", label: "動きの確認", id: "vvoh9yFWjY8" },
+                    { type: "check", label: "動きの確認 2", id: "L3HoW5aH1b0" },
+                    { type: "main", label: "実践トレーニング", id: "esmG0gBu6XA" }
+                ]
+            },
+            {
+                id: 3,
+                title: "コース 3",
+                desc: "徐々に強度を上げていきましょう。",
+                videos: [
+                    { type: "check", label: "動きの確認 1", id: "lHwCOokLt1Q" },
+                    { type: "check", label: "動きの確認 2", id: "NX9STcriOLw" },
+                    { type: "main", label: "実践トレーニング", id: "l8tC6trfXsw" }
+                ]
+            },
+            {
+                id: 4,
+                title: "コース 4",
+                desc: "中強度の運動を目指します。",
+                videos: [
+                    { type: "check", label: "動きの確認 1", id: "lHwCOokLt1Q" },
+                    { type: "check", label: "動きの確認 2", id: "cth6_ZT_Atc" },
+                    { type: "main", label: "実践トレーニング", id: "c0zrjIvGO7Q" }
+                ]
+            },
+            {
+                id: 5,
+                title: "コース 5",
+                desc: "よりアクティブに動きます。",
+                videos: [
+                    { type: "check", label: "動きの確認 1", id: "7vOnajWFnhQ" },
+                    { type: "check", label: "動きの確認 2", id: "cth6_ZT_Atc" },
+                    { type: "main", label: "実践トレーニング", id: "eeYbg324mzE" }
+                ]
+            },
+            {
+                id: 6,
+                title: "コース 6",
+                desc: "最終ステップです。頑張りましょう！",
+                videos: [
+                    { type: "check", label: "動きの確認 1", id: "WdTU-oJQDOI" },
+                    { type: "check", label: "動きの確認 2", id: "cth6_ZT_Atc" },
+                    { type: "main", label: "実践トレーニング", id: "DZxHenXtZUY" }
+                ]
+            }
+        ];
+
+        const container = document.getElementById('course-list');
+
+        courses.forEach(course => {
+            const section = document.createElement('div');
+            section.className = "bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden";
+            
+            let videosHtml = '';
+            course.videos.forEach(video => {
+                const badgeColor = video.type === 'check' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700';
+                videosHtml += `
+                    <div class="mb-8 last:mb-2">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold px-2 py-1 rounded ${badgeColor}">${video.label}</span>
+                        </div>
+                        
+                        <div class="relative w-full bg-slate-100 rounded-t overflow-hidden" style="padding-bottom: 56.25%;">
+                            <iframe class="absolute top-0 left-0 w-full h-full"
+    src="https://www.youtube-nocookie.com/embed/${video.id}?rel=0&playsinline=1" 
+    title="${video.label}" frameborder="0" 
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerpolicy="strict-origin-when-cross-origin"
+    allowfullscreen>
+</iframe>
+                        </div>
+
+                        <a href="https://youtu.be/${video.id}" target="_blank" class="block w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-4 rounded-b text-center shadow transition-colors flex items-center justify-center gap-2">
+                            <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24"><path d="M10 16.5l6-4.5-6-4.5v9zM12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8z"/></svg>
+                            YouTubeアプリで見る
+                        </a>
+                        <p class="text-xs text-center text-slate-400 mt-1">※上の画面で見られない時はこのボタンを押してください</p>
+                    </div>
+                `;
+            });
+
+            section.innerHTML = `
+                <button onclick="toggleAccordion(${course.id})" class="w-full text-left p-4 focus:outline-none flex justify-between items-center bg-slate-50 hover:bg-slate-100 transition-colors">
+                    <div>
+                        <h3 class="font-bold text-lg text-slate-800">${course.title}</h3>
+                        <p class="text-xs text-slate-500">${course.desc}</p>
+                    </div>
+                    <svg id="icon-${course.id}" class="w-6 h-6 text-slate-400 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+                </button>
+                <div id="content-${course.id}" class="accordion-content bg-white">
+                    <div class="p-4 border-t border-slate-100">
+                        ${videosHtml}
+                    </div>
+                </div>
+            `;
+            container.appendChild(section);
+        });
+
+        function toggleAccordion(id) {
+            const content = document.getElementById(`content-${id}`);
+            const icon = document.getElementById(`icon-${id}`);
+            
+            // Toggle current
+            if (content.classList.contains('accordion-open')) {
+                content.classList.remove('accordion-open');
+                content.style.maxHeight = '0';
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                document.querySelectorAll('.accordion-content').forEach(el => {
+                    el.classList.remove('accordion-open');
+                    el.style.maxHeight = '0';
+                });
+                document.querySelectorAll('svg[id^="icon-"]').forEach(el => {
+                    el.style.transform = 'rotate(0deg)';
+                });
+
+                content.classList.add('accordion-open');
+                content.style.maxHeight = content.scrollHeight + "px";
+                icon.style.transform = 'rotate(180deg)';
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理者コンソール - Integrated Research Platform</title>
+
+    <!-- Libraries -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+    <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {},
+            },
+        }
+    </script>
+    <style>
+        /* Suppress potential Babel/Tailwind warnings in console */
+    </style>
+
+    <style>
+        body {
+            background-color: #f1f5f9;
+            color: #334155;
+            font-family: sans-serif;
+        }
+
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+
+        .nav-item {
+            display: flex;
+            align-items: center;
+            padding: 12px;
+            border-radius: 8px;
+            transition: all 0.2s;
+            cursor: pointer;
+        }
+
+        .nav-item:hover {
+            background-color: #334155;
+            color: white;
+        }
+
+        .nav-item.active {
+            background-color: #2563eb;
+            color: white;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: bold;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: #2563eb;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background-color: white;
+            color: #64748b;
+            border: 1px solid #cbd5e1;
+        }
+
+        .btn-secondary:hover {
+            background-color: #f1f5f9;
+        }
+
+        .btn-danger {
+            color: #ef4444;
+            border: 1px solid #fee2e2;
+            background: #fef2f2;
+        }
+
+        .btn-danger:hover {
+            background: #fee2e2;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+    <div
+        style="position:fixed; top:10px; right:10px; z-index:9999; background:rgba(30,58,138,0.1); color:rgba(30,58,138,0.5); padding:4px 12px; border-radius:100px; font-size:10px; font-weight:bold; pointer-events:none;">
+        v177</div>
+    <script>
+            (function () {
+                const VERSION = "V177";
+                if (localStorage.getItem("admin_version") !== VERSION) {
+                    localStorage.setItem("admin_version", VERSION);
+                    if ('serviceWorker' in navigator) {
+                        caches.keys().then(names => { for (let name of names) caches.delete(name); });
+                    }
+                    console.log("Admin New Version! Clearing Cache...");
+                    location.reload(true);
+                }
+            })();
+        console.log("CRITICAL: LOADING ADMIN V177 AT TOP");
+    </script>
+
+    <!-- AWS Config -->
+    <script>
+        window.AWS_CONFIG = {
+            apiBase: "https://i3ar4264ka.execute-api.ap-northeast-1.amazonaws.com/Prod"
+        };
+        console.log("Admin AWS Config Loaded");
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- DATABASE INIT ---
+        const DB_KEY = "research_platform_db_v3";
+        const INITIAL_DATA = {
+            systemDate: new Date().toISOString().split('T')[0],
+            exercises: [
+                { id: 1, category: "乳がんサバイバー", title: "動画（１）", note: "Step1用動画: 基礎的なストレッチ", file: "mov1.mp4" },
+                { id: 2, category: "乳がんサバイバー", title: "動画（２）", note: "Step2用動画: 軽い筋トレ", file: "mov2.mp4" },
+                { id: 3, category: "乳がんサバイバー", title: "動画（３）", note: "中強度: スクワット", file: "mov3.mp4" },
+                { id: 4, category: "乳がんサバイバー", title: "動画（４）", note: "有酸素運動: 踏み台昇降", file: "mov4.mp4" }
+            ],
+            projects: [
+                {
+                    id: 1, name: "プロジェクトA", category: "乳がんサバイバー", facility: "病院A",
+                    program: [
+                        { startDay: 1, endDay: 7, exerciseId: 1, freq: 3 },
+                        { startDay: 8, endDay: 14, exerciseId: 2, freq: 3 },
+                        { startDay: 15, endDay: 21, exerciseId: 3, freq: 4 }
+                    ]
+                }
+            ],
+            subjects: [
+                {
+                    id: 1, name: "山田 花子", kana: "ヤマダ ハナコ", gender: "female", birthDate: "1970-01-01",
+                    category: "乳がんサバイバー", projectId: 1, startDate: "2025-06-01",
+                    logs: [],
+                    feedforward: "順調ですね！無理せず続けましょう。"
+                }
+            ],
+            columns: [
+                { id: 1, title: "はじめに", category: "乳がんサバイバー", date: "0日目〜", type: "text" },
+                { id: 2, title: "他サバイバーの意見その１", category: "乳がんサバイバー", date: "0日目〜7日目", type: "text" },
+                { id: 3, title: "運動のお話", category: "乳がんサバイバー", date: "0日目〜", type: "text" }
+            ],
+            notifications: []
+        };
+
+        // --- HOOK: Shared Data Sync ---
+        // --- AWS API Hook ---
+        const useApi = () => {
+            // Initial State
+            const [data, setData] = useState({
+                exercises: [],
+                projects: [],
+                subjects: [],
+                categories: [],
+                columns: [],
+                notifications: [],
+                systemDate: new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Tokyo" })
+            });
+
+            const apiBase = window.AWS_CONFIG.apiBase;
+
+            // Load all data on mount
+            useEffect(() => {
+                const loadData = async () => {
+                    try {
+                        // In a real app, these would be separate calls or a batch call
+                        // For this migration, let's assume valid endpoints or mock them if 404
+                        const endpoints = ["exercises", "projects", "subjects", "categories", "columns"];
+                        const results = {};
+
+                        for (const ep of endpoints) {
+                            try {
+                                const res = await fetch(`${apiBase}/${ep}`, { mode: 'cors' });
+                                if (res.ok) {
+                                    results[ep] = await res.json();
+                                } else {
+                                    console.warn(`Failed to load ${ep}: ${res.status}`);
+                                    results[ep] = [];
+                                }
+                            } catch (e) {
+                                console.warn(`Fetch error ${ep}:`, e);
+                                results[ep] = [];
+                            }
+                        }
+                        console.log("Loaded Data:", results);
+                        setData(prev => ({ ...prev, ...results }));
+                    } catch (e) {
+                        console.error("Load Data Error:", e);
+                    }
+                };
+
+                loadData();
+            }, []);
+
+            const triggerSync = () => {
+                const ts = Date.now();
+                localStorage.setItem("mc_sync_timestamp", ts);
+                console.log("Sync signal sent:", ts);
+            };
+
+            // CRUD Operations
+            const add = async (col, item) => {
+                try {
+                    if (!item.id) item.id = Date.now();
+                    const res = await fetch(`${apiBase}/${col}`, {
+                        method: 'POST',
+                        mode: 'cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                    if (!res.ok) throw new Error("API Error: " + res.status);
+                    setData(prev => ({
+                        ...prev,
+                        [col]: [...prev[col], item]
+                    }));
+                    triggerSync();
+                    console.log(`Added to ${col}`, item);
+                } catch (e) {
+                    console.error("Add Error:", e);
+                    alert("保存エラー: " + e.message);
+                }
+            };
+
+            const update = async (col, item) => {
+                try {
+                    const docId = item.id || item._docId;
+                    if (!docId) throw new Error("ID missing");
+                    const res = await fetch(`${apiBase}/${col}/${docId}`, {
+                        method: 'PUT',
+                        mode: 'cors',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(item)
+                    });
+                    if (!res.ok) throw new Error("API Error: " + res.status);
+                    setData(prev => ({
+                        ...prev,
+                        [col]: prev[col].map(i => String(i.id) === String(docId) ? item : i)
+                    }));
+                    triggerSync();
+                    console.log(`Updated ${col}`, item);
+                } catch (e) {
+                    console.error("Update Error:", e);
+                    alert("更新エラー: " + e.message);
+                }
+            };
+
+            const remove = async (col, id) => {
+                if (!confirm("本当に削除しますか？")) return;
+                try {
+                    const res = await fetch(`${apiBase}/${col}/${id}`, {
+                        method: 'DELETE',
+                        mode: 'cors'
+                    });
+                    if (!res.ok) throw new Error("API Error: " + res.status);
+                    setData(prev => ({
+                        ...prev,
+                        [col]: prev[col].filter(i => String(i.id) !== String(id))
+                    }));
+                    triggerSync();
+                } catch (e) {
+                    console.error("Delete Error:", e);
+                    alert("削除エラー: " + e.message);
+                }
+            };
+
+            // --- CSV EXPORT FUNCTION ---
+            const downloadCSV = async () => {
+                const btn = document.getElementById('btn-download-csv');
+                if (btn) { btn.disabled = true; btn.textContent = "出力中..."; }
+
+                try {
+                    const res = await fetch(`${apiBase}/export`, { mode: 'cors' });
+                    if (!res.ok) throw new Error("Export failed: " + res.status);
+
+                    const jsonData = await res.json();
+                    if (!jsonData || jsonData.length === 0) {
+                        alert("データがありません");
+                        return;
+                    }
+
+                    // Convert to CSV
+                    const headers = Object.keys(jsonData[0]);
+                    const csvRows = [
+                        headers.join(','), // Header row
+                        ...jsonData.map(row => headers.map(fieldName => {
+                            let val = row[fieldName] === null || row[fieldName] === undefined ? '' : row[fieldName];
+                            // Escape quotes just in case
+                            val = String(val).replace(/"/g, '""');
+                            return `"${val}"`;
+                        }).join(','))
+                    ];
+                    const csvString = csvRows.join('\r\n');
+
+                    // Create Blob & Download
+                    // Add BOM for Excel (UTF-8 with BOM)
+                    const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
+                    const blob = new Blob([bom, csvString], { type: 'text/csv;charset=utf-8;' });
+                    const url = URL.createObjectURL(blob);
+
+                    const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+                    const link = document.createElement("a");
+                    link.setAttribute("href", url);
+                    link.setAttribute("download", `activity_pacing_data_${dateStr}.csv`);
+                    link.style.visibility = 'hidden';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                } catch (e) {
+                    console.error("CSV Export Error:", e);
+                    alert("ダウンロード失敗: " + e.message);
+                } finally {
+                    if (btn) { btn.disabled = false; btn.textContent = "研究データCSVダウンロード"; }
+                }
+            };
+
+            return { data, setData, add, update, remove, downloadCSV };
+        };
+
+        // --- UTILS ---
+        const calculateProgressDay = (startDate, systemDate) => {
+            const start = new Date(startDate);
+            const current = new Date(systemDate);
+            const diffTime = current - start;
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            return diffDays > 0 ? diffDays : 0;
+        };
+
+        // --- ICONS ---
+        const Icon = ({ name }) => {
+            switch (name) {
+                case 'home': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>;
+                case 'users': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></g></svg>;
+                case 'folder': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /></svg>;
+                case 'video': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m14 9 5 3-5 3v-6Z" /></g></svg>;
+                case 'calendar': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></g></svg>;
+                case 'file': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /><polyline points="9 22 9 12 15 12 15 22" /></svg>;
+                case 'settings': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" /></g></svg>;
+                case 'log-out': return <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" x2="9" y1="12" y2="12" /></g></svg>;
+                case 'plus': return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><g><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></g></svg>;
+                case 'trash': return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><g><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></g></svg>;
+                case 'edit': return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z" /></svg>;
+                case 'download': return <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>;
+                default: return null;
+            }
+        };
+
+        // --- CONSTANTS ---
+        const MENU_DEFINITIONS = [
+            { id: 'nav-home', label: 'ホーム', default: true },
+            { id: 'nav-plan', label: 'プラン(今日の提案)', default: true },
+            { id: 'nav-program', label: '運動(プログラム)', default: true },
+            { id: 'nav-measure', label: '測定(ゲーム)', default: true },
+            { id: 'nav-tools', label: 'ツール(VO2/強度)', default: true },
+            { id: 'nav-cloud', label: 'クラウド(設定)', default: true },
+        ];
+
+        // --- COMPONENTS ---
+
+        const LoginScreen = ({ onLogin }) => {
+            const [id, setId] = useState("");
+            const [pw, setPw] = useState("");
+
+            return (
+                <div className="flex items-center justify-center min-h-screen bg-slate-100">
+                    <div className="bg-white p-8 rounded-xl shadow-lg w-96">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 bg-blue-600 rounded-xl flex items-center justify-center mx-auto mb-4 text-white text-3xl font-bold">A</div>
+                            <h1 className="text-2xl font-bold text-slate-800">管理者ログイン</h1>
+                            <p className="text-sm text-slate-500">Research & Care Platform</p>
+                        </div>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-600 mb-1">管理者ID</label>
+                                <input className="w-full border p-2 rounded" placeholder="admin" value={id} onChange={e => setId(e.target.value)} />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-600 mb-1">パスワード</label>
+                                <input type="password" className="w-full border p-2 rounded" placeholder="password" value={pw} onChange={e => setPw(e.target.value)} />
+                            </div>
+                            <button onClick={onLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 transition">ログイン</button>
+                        </div>
+                        <div className="mt-4 text-center text-xs text-slate-400">
+                            ※デモ用: 任意のID/PASSでログインできます
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Sidebar = ({ page, setPage, data, setData, onLogout, downloadCSV }) => {
+            return (
+                <div className="w-64 bg-slate-900 text-slate-300 flex flex-col h-full shrink-0">
+                    <div className="p-6 font-bold text-white text-xl flex items-center gap-2 border-b border-slate-800">
+                        <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">A</div>
+                        Admin
+                    </div>
+                    <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
+                        {['home', 'video', 'folder', 'category', 'users', 'file', 'settings'].map(p => (
+                            <div key={p} onClick={() => setPage(p)} className={`nav-item ${page === p ? 'active' : ''}`}>
+                                <span className="mr-3 capitalize"><Icon name={p === 'category' ? 'folder' : p} /></span>
+                                {p === 'home' && 'トップ'}
+                                {p === 'video' && '運動データ'}
+                                {p === 'folder' && 'プロジェクト'}
+                                {p === 'category' && 'カテゴリ管理'}
+                                {p === 'users' && '被験者管理'}
+                                {p === 'file' && 'コラム管理'}
+                                {p === 'settings' && '設定'}
+                            </div>
+                        ))}
+                        <div className="pt-4 mt-4 border-t border-slate-700">
+                            <button id="btn-download-csv" onClick={downloadCSV} className="w-full text-left nav-item text-green-300 hover:text-green-100">
+                                <Icon name="download" /> 研究データCSVダウンロード
+                            </button>
+                        </div>
+                    </nav>
+
+                    {/* Debugger for Date */}
+                    <div className="p-4 bg-slate-800 border-t border-slate-700">
+                        <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 mb-2">
+                            <Icon name="calendar" /> テストモード設定
+                        </div>
+                        <div className="text-xs text-slate-400 mb-1">システム現在日付</div>
+                        <input
+                            type="date"
+                            className="w-full bg-slate-700 text-white border border-slate-600 rounded p-1 text-sm mb-2"
+                            value={data.systemDate}
+                            onChange={(e) => setData({ ...data, systemDate: e.target.value })}
+                        />
+                        <div className="text-[10px] text-slate-500">変更すると利用者アプリの日付も同期されます。</div>
+                    </div>
+
+                    <div className="p-4 border-t border-slate-800">
+                        <button onClick={onLogout} className="flex items-center gap-2 text-sm hover:text-white transition">
+                            <Icon name="log-out" /> ログアウト
+                        </button>
+                    </div>
+                </div>
+            );
+        };
+
+        // 1. Dashboard
+        const Dashboard = ({ data }) => {
+            if (!data) return <div className="p-8 text-slate-400">データを読み込み中...</div>;
+
+            const subjects = Array.isArray(data.subjects) ? data.subjects : [];
+            const exercises = Array.isArray(data.exercises) ? data.exercises : [];
+            const projects = Array.isArray(data.projects) ? data.projects : [];
+            const today = data.systemDate || "";
+
+            // Build recent activities list defensively
+            const flatLogs = [];
+            subjects.forEach(s => {
+                const logs = s && Array.isArray(s.logs) ? s.logs : [];
+                logs.forEach(l => {
+                    if (l) {
+                        flatLogs.push({ ...l, name: s.name || "不明", subjectId: s.id });
+                    }
+                });
+            });
+            const recentLogs = flatLogs.reverse().slice(0, 5);
+
+            return (
+                <div className="p-8">
+                    <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-2xl font-bold text-slate-800">ダッシュボード</h2>
+                        <div className="text-sm font-bold bg-white px-4 py-2 rounded shadow-sm">
+                            現在日時: {today}
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-slate-600 mb-4 border-b pb-2">全体ステータス</h3>
+                            <div className="grid grid-cols-3 gap-4 text-center">
+                                <div className="p-4 bg-blue-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-blue-600">{subjects.length}</div>
+                                    <div className="text-xs text-slate-500">被験者数</div>
+                                </div>
+                                <div className="p-4 bg-emerald-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-emerald-600">{projects.length}</div>
+                                    <div className="text-xs text-slate-500">プロジェクト</div>
+                                </div>
+                                <div className="p-4 bg-purple-50 rounded-lg">
+                                    <div className="text-2xl font-bold text-purple-600">{exercises.length}</div>
+                                    <div className="text-xs text-slate-500">動画データ</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-slate-600 mb-4 border-b pb-2">新着ログ (リアルタイム同期)</h3>
+                            <ul className="space-y-3 text-sm h-48 overflow-y-auto">
+                                {recentLogs.length > 0 ? recentLogs.map((log, i) => (
+                                    <li key={i} className="flex gap-2 items-center text-slate-700 animate-pulse">
+                                        <span className={`w-2 h-2 rounded-full ${log.done ? 'bg-emerald-500' : 'bg-red-500'}`}></span>
+                                        <span><span className="font-bold">{log.name}さんがDay {log.day}の課題を{log.done ? '完了' : '未完了'}</span></span>
+                                    </li>
+                                )) : (
+                                    <li className="text-slate-400 p-4 text-center">ログデータがまだありません</li>
+                                )}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 2. ExerciseManager
+        const ExerciseManager = ({ data, ops }) => {
+            const [form, setForm] = useState({ id: '', category: '', title: '', note: '', url: '', file: '', hasTimer: true, hasHabitB: true });
+            const [editingId, setEditingId] = useState(null);
+            const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
+            const [categoryFilter, setCategoryFilter] = useState('all');
+
+            const handleAdd = () => {
+                if (!form.title) return;
+
+                // Manual ID Logic
+                let newId = form.id;
+                if (!newId) {
+                    newId = Date.now().toString();
+                } else {
+                    // Check duplicate
+                    if (data.exercises.some(e => e.id == newId)) {
+                        alert("IDが重複しています。別のIDを指定してください。");
+                        return;
+                    }
+                }
+
+                const newEx = { ...form, id: newId };
+                ops.add("exercises", newEx);
+                setForm({ id: '', category: '', title: '', note: '', url: '', file: '', hasTimer: true, hasHabitB: true });
+            };
+
+            const handleUpdate = () => {
+                if (!form.title || !editingId) return;
+                // Keep original ID when editing
+                const updatedEx = { ...form, id: editingId };
+                ops.update("exercises", updatedEx);
+                setEditingId(null);
+                setForm({ id: '', category: '', title: '', note: '', url: '', file: '', hasTimer: true, hasHabitB: true });
+            };
+
+            const handleEdit = (ex) => {
+                setEditingId(ex.id);
+                setForm({ ...ex, id: ex.id }); // Populate ID field (read-only if desired, or editable but tricky for update)
+            };
+
+            const handleCancel = () => {
+                setEditingId(null);
+                setForm({ id: '', category: '', title: '', note: '', url: '', file: '', hasTimer: true, hasHabitB: true });
+            };
+
+            const handleDelete = (id) => {
+                if (confirm("削除しますか？")) {
+                    ops.remove("exercises", id);
+                    if (editingId === id) handleCancel();
+                }
+            };
+
+            // Sorting Logic
+            const requestSort = (key) => {
+                let direction = 'asc';
+                if (sortConfig.key === key && sortConfig.direction === 'asc') {
+                    direction = 'desc';
+                }
+                setSortConfig({ key, direction });
+            };
+
+            // Filter then Sort
+            const filteredExercises = data.exercises.filter(e => {
+                if (categoryFilter === 'all') return true;
+                return e.category === categoryFilter;
+            });
+
+            const sortedExercises = [...filteredExercises].sort((a, b) => {
+                if (a[sortConfig.key] < b[sortConfig.key]) {
+                    return sortConfig.direction === 'asc' ? -1 : 1;
+                }
+                if (a[sortConfig.key] > b[sortConfig.key]) {
+                    return sortConfig.direction === 'asc' ? 1 : -1;
+                }
+                return 0;
+            });
+
+            return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6 text-slate-800">運動データ管理</h2>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <div className="lg:col-span-2 bg-white rounded-lg shadow overflow-hidden">
+                            <div className="p-3 bg-white border-b flex justify-between items-center">
+                                <h4 className="font-bold text-slate-600">登録済みデータ</h4>
+                                <select
+                                    className="border p-1 rounded text-sm text-slate-600"
+                                    value={categoryFilter}
+                                    onChange={(e) => setCategoryFilter(e.target.value)}
+                                >
+                                    <option value="all">カテゴリ: すべて</option>
+                                    {["HIIT", "筋トレ", "有酸素", "ストレッチ", "その他"].map(c => <option key={c} value={c}>{c}</option>)}
+                                </select>
+                            </div>
+                            <table className="w-full text-left text-sm">
+                                <thead className="bg-slate-50">
+                                    <tr>
+                                        <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => requestSort('id')}>ID {sortConfig.key === 'id' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}</th>
+                                        <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => requestSort('title')}>タイトル {sortConfig.key === 'title' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}</th>
+                                        <th className="p-3 cursor-pointer hover:bg-slate-100" onClick={() => requestSort('category')}>カテゴリ {sortConfig.key === 'category' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}</th>
+                                        <th className="p-3">操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                    {sortedExercises.map(e => (
+                                        <tr key={e.id} className={`hover:bg-slate-50 ${editingId === e.id ? 'bg-blue-50' : ''}`}>
+                                            <td className="p-3">{e.id}</td>
+                                            <td className="p-3 font-bold">{e.title}</td>
+                                            <td className="p-3"><span className="text-xs bg-slate-100 px-2 py-1 rounded">{e.category || '-'}</span></td>
+                                            <td className="p-3 flex gap-2">
+                                                <button onClick={() => handleEdit(e)} className="text-blue-500 hover:text-blue-700"><Icon name="edit" /></button>
+                                                <button onClick={() => handleDelete(e.id)} className="text-red-400 hover:text-red-600"><Icon name="trash" /></button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="bg-white p-6 rounded-lg shadow h-fit">
+                            <h3 className="font-bold mb-4 border-b pb-2">{editingId ? '編集' : '新規登録'}</h3>
+                            <div className="space-y-3">
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">ID (任意)</label>
+                                    <input
+                                        className="border w-full p-2 rounded"
+                                        placeholder="未入力で自動採番"
+                                        value={form.id}
+                                        onChange={e => setForm({ ...form, id: e.target.value })}
+                                        disabled={!!editingId} // Disable ID editing to prevent key issues/complexity
+                                    />
+                                    {editingId && <p className="text-[10px] text-gray-400">IDは編集できません</p>}
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">タイトル *</label>
+                                    <input className="border w-full p-2 rounded" placeholder="タイトル" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">カテゴリ</label>
+                                    <select className="border w-full p-2 rounded" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                                        <option value="">(未設定)</option>
+                                        {["HIIT", "筋トレ", "有酸素", "ストレッチ", "その他"].map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">YouTube URL</label>
+                                    <input className="border w-full p-2 rounded" placeholder="https://youtu.be/..." value={form.url || ''} onChange={e => setForm({ ...form, url: e.target.value })} />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">動画ファイル名</label>
+                                    <input className="border w-full p-2 rounded" placeholder="example.mp4" value={form.file || ''} onChange={e => setForm({ ...form, file: e.target.value })} />
+                                </div>
+
+                                <div>
+                                    <label className="text-xs font-bold text-slate-500">備考</label>
+                                    <textarea className="border w-full p-2 rounded" placeholder="備考" value={form.note} onChange={e => setForm({ ...form, note: e.target.value })}></textarea>
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id="hasTimer"
+                                        checked={form.hasTimer !== false}
+                                        onChange={e => setForm({ ...form, hasTimer: e.target.checked })}
+                                        className="w-4 h-4 text-emerald-600 rounded focus:ring-emerald-500"
+                                    />
+                                    <label htmlFor="hasTimer" className="text-sm font-bold text-slate-600 cursor-pointer select-none">アプリ側でタイマーを表示する</label>
+                                </div>
+
+                                <div className="flex items-center gap-2 pt-2">
+                                    <input
+                                        type="checkbox"
+                                        id="hasHabitB"
+                                        checked={form.hasHabitB !== false}
+                                        onChange={e => setForm({ ...form, hasHabitB: e.target.checked })}
+                                        className="w-4 h-4 text-pink-500 rounded focus:ring-pink-400"
+                                    />
+                                    <label htmlFor="hasHabitB" className="text-sm font-bold text-slate-600 cursor-pointer select-none">アプリ側でhabit-Bボタンを表示する</label>
+                                </div>
+
+                                <div className="pt-2 flex gap-2">
+                                    {editingId ? (
+                                        <React.Fragment>
+                                            <button onClick={handleUpdate} className="btn btn-primary flex-1">更新</button>
+                                            <button onClick={handleCancel} className="btn btn-secondary flex-1">キャンセル</button>
+                                        </React.Fragment>
+                                    ) : (
+                                        <button onClick={handleAdd} className="btn btn-primary w-full">登録</button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 3. Project Manager
+        // 3. Project Manager
+        const ProjectManager = ({ data, ops }) => {
+            const [view, setView] = useState('list');
+            const [selectedProj, setSelectedProj] = useState(null);
+            const [form, setForm] = useState({ name: '', category: '', facility: '', program: [], anytimeExercises: [], menuConfig: MENU_DEFINITIONS.map(m => m.id), menuLabels: {} });
+
+            // Set default category
+            useEffect(() => {
+                if (!form.category && data.categories.length > 0) {
+                    setForm(prev => ({ ...prev, category: data.categories[0].name }));
+                }
+            }, [data.categories]);
+
+            const addProgRow = () => {
+                const last = form.program[form.program.length - 1];
+                const start = last ? Number(last.endDay) + 1 : 1;
+                setForm({ ...form, program: [...form.program, { startDay: start, endDay: start + 6, exerciseId: (data.exercises[0] ? data.exercises[0].id : 1), freq: 3 }] });
+            };
+            const updateProgRow = (idx, field, val) => {
+                const newProg = [...form.program];
+                newProg[idx][field] = val;
+                setForm({ ...form, program: newProg });
+            };
+            const removeProgRow = (idx) => {
+                setForm({ ...form, program: form.program.filter((_, i) => i !== idx) });
+            };
+
+            // Toggle Anytime Exercise
+            const toggleAnytime = (exId) => {
+                const current = form.anytimeExercises || [];
+                if (current.includes(exId)) {
+                    setForm({ ...form, anytimeExercises: current.filter(id => id !== exId) });
+                } else {
+                    setForm({ ...form, anytimeExercises: [...current, exId] });
+                }
+            };
+
+            const toggleMenu = (menuId) => {
+                setForm(prev => {
+                    const current = prev.menuConfig || MENU_DEFINITIONS.map(m => m.id);
+                    if (current.includes(menuId)) {
+                        return { ...prev, menuConfig: current.filter(id => id !== menuId) };
+                    } else {
+                        return { ...prev, menuConfig: [...current, menuId] };
+                    }
+                });
+            };
+            const moveMenuById = (menuId, direction) => {
+                console.log("[V166] moveMenuById called:", menuId, direction);
+                setForm(prev => {
+                    const current = prev.menuConfig || MENU_DEFINITIONS.map(m => m.id);
+                    const newConfig = [...current];
+                    const idx = newConfig.indexOf(menuId);
+
+                    if (idx === -1) {
+                        console.log("[V166] ID not found in config:", menuId);
+                        return prev;
+                    }
+                    const targetIdx = idx + direction;
+
+                    if (targetIdx < 0 || targetIdx >= newConfig.length) {
+                        console.log("[V166] TargetIdx out of bounds:", targetIdx);
+                        return prev;
+                    }
+
+                    const temp = newConfig[idx];
+                    newConfig[idx] = newConfig[targetIdx];
+                    newConfig[targetIdx] = temp;
+
+                    console.log("[V166] New order successful:", newConfig);
+                    return { ...prev, menuConfig: newConfig };
+                });
+            };
+
+            const saveProject = () => {
+                if (!form.name) return alert("名前を入力してください");
+                if (form.id) {
+                    ops.update("projects", form);
+                } else {
+                    ops.add("projects", { ...form, id: Date.now() });
+                }
+                setView('list');
+            };
+
+            const openDetail = (proj) => {
+                setSelectedProj(proj);
+                setView('detail');
+            };
+
+            const openEdit = (proj) => {
+                setForm({
+                    ...proj,
+                    anytimeExercises: proj.anytimeExercises || [],
+                    menuConfig: proj.menuConfig || MENU_DEFINITIONS.map(m => m.id),
+                    menuLabels: proj.menuLabels || {}
+                });
+                setView('create');
+            };
+
+            const deleteProject = (id) => {
+                ops.remove("projects", id);
+                setView('list');
+            };
+
+            if (view === 'list') return (
+                <div className="p-8">
+                    <div className="flex justify-between mb-6">
+                        <h2 className="text-2xl font-bold">プロジェクト一覧</h2>
+                        <button onClick={() => { setForm({ name: '', category: (data.categories[0] ? data.categories[0].name : ''), facility: '', program: [], anytimeExercises: [], menuConfig: MENU_DEFINITIONS.map(m => m.id), menuLabels: {} }); setView('create'); }} className="btn btn-primary"><Icon name="plus" /> 新規作成</button>
+                    </div>
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50"><tr><th className="p-4">カテゴリ</th><th className="p-4">プロジェクト名</th><th className="p-4">施設</th><th className="p-4">操作</th></tr></thead>
+                            <tbody className="divide-y">
+                                {(data.projects || []).map(p => (
+                                    <tr key={p.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openDetail(p)}>
+                                        <td className="p-4">{p.category}</td>
+                                        <td className="p-4 font-bold text-blue-600">{p.name}</td>
+                                        <td className="p-4">{p.facility}</td>
+                                        <td className="p-4"><button className="btn btn-secondary text-xs">詳細</button></td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+
+            if (view === 'create') return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6">{form.id ? 'プロジェクト編集' : 'プロジェクト作成'}</h2>
+                    <div className="bg-white p-6 rounded-lg shadow mb-6">
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                            <div><label className="block text-sm font-bold mb-1">プロジェクト名</label><input className="border w-full p-2 rounded" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                            <div>
+                                <label className="block text-sm font-bold mb-1">対象カテゴリ</label>
+                                <select className="border w-full p-2 rounded" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                                    <option value="">カテゴリを選択</option>
+                                    {data.categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                </select>
+                            </div>
+                            <div><label className="block text-sm font-bold mb-1">対象施設</label><input className="border w-full p-2 rounded" value={form.facility} onChange={e => setForm({ ...form, facility: e.target.value })} /></div>
+                        </div>
+
+                        {/* Program Schedule */}
+                        <div className="mb-6">
+                            <label className="block text-sm font-bold mb-2">① スケジュール（日次プログラム）</label>
+                            <table className="w-full text-sm border mb-2">
+                                <thead className="bg-slate-50"><tr><th>開始日</th><th>終了日</th><th>運動</th><th>頻度(回/週)</th><th></th></tr></thead>
+                                <tbody>
+                                    {form.program.map((p, i) => (
+                                        <tr key={i} className="text-center">
+                                            <td className="p-1"><input className="border w-16 text-center" value={p.startDay} onChange={e => updateProgRow(i, 'startDay', e.target.value)} /></td>
+                                            <td className="p-1"><input className="border w-16 text-center" value={p.endDay} onChange={e => updateProgRow(i, 'endDay', e.target.value)} /></td>
+                                            <td className="p-1">
+                                                <select className="border w-full" value={p.exerciseId} onChange={e => updateProgRow(i, 'exerciseId', Number(e.target.value))}>
+                                                    {(data.exercises || []).map(ex => <option key={ex.id} value={ex.id}>{ex.title}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className="p-1"><input className="border w-16 text-center" value={p.freq} onChange={e => updateProgRow(i, 'freq', e.target.value)} /></td>
+                                            <td className="p-1"><button onClick={() => removeProgRow(i)} className="text-red-500"><Icon name="trash" /></button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <button onClick={addProgRow} className="text-blue-500 text-sm hover:underline flex items-center gap-1"><Icon name="plus" /> 行を追加</button>
+                        </div>
+
+                        {/* Anytime Exercises (New Feature) */}
+                        <div className="mb-6 bg-slate-50 p-4 rounded-lg">
+                            <label className="block text-sm font-bold mb-2">② 自由実施（Anytime Access）</label>
+                            <p className="text-xs text-slate-500 mb-2">※ 実施日に関わらず、いつでも実施可能なリストとして表示されます。</p>
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto border p-2 bg-white rounded">
+                                {data.exercises.map(ex => (
+                                    <label key={ex.id} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-slate-50 p-1 rounded">
+                                        <input
+                                            type="checkbox"
+                                            checked={(form.anytimeExercises || []).includes(ex.id)}
+                                            onChange={() => toggleAnytime(ex.id)}
+                                        />
+                                        <span className="truncate">{ex.title}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Menu Config with Reordering (Improved UI V166) */}
+                        <div className="mb-6 bg-white p-4 rounded-xl border-2 border-slate-100 shadow-md">
+                            <label className="block text-sm font-bold mb-2 text-slate-800 underline decoration-blue-500 decoration-2">③ 下部メニューの表示・順序・ラベル設定 (V166)</label>
+
+                            <div className="space-y-2 max-w-lg">
+                                {(() => {
+                                    const currentConfig = form.menuConfig || MENU_DEFINITIONS.map(m => m.id);
+                                    const allIds = [...currentConfig];
+                                    MENU_DEFINITIONS.forEach(m => { if (!allIds.includes(m.id)) allIds.push(m.id); });
+
+                                    return allIds.map((menuId) => {
+                                        const menu = MENU_DEFINITIONS.find(m => m.id === menuId);
+                                        if (!menu) return null;
+                                        const isSelected = currentConfig.includes(menuId);
+                                        const configIdx = currentConfig.indexOf(menuId);
+
+                                        return (
+                                            <div key={menuId} className={`flex items-center justify-between p-3 border-2 rounded-xl transition-all shadow-sm ${isSelected ? 'bg-white border-blue-400 ring-1 ring-blue-50' : 'bg-slate-50 border-slate-200 opacity-40 grayscale'}`}>
+                                                <div className="flex items-center gap-3 flex-1">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={() => toggleMenu(menuId)}
+                                                        className="w-6 h-6 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                                    />
+                                                    <div className="flex flex-col flex-1">
+                                                        <input
+                                                            type="text"
+                                                            value={(form.menuLabels && form.menuLabels[menuId]) || menu.label}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                setForm(prev => ({
+                                                                    ...prev,
+                                                                    menuLabels: { ...prev.menuLabels, [menuId]: val }
+                                                                }));
+                                                            }}
+                                                            disabled={!isSelected}
+                                                            className={`text-base font-bold bg-transparent border-b border-slate-200 hover:border-blue-400 focus:border-blue-600 focus:outline-none transition-colors ${isSelected ? 'text-slate-900' : 'text-slate-400'}`}
+                                                            placeholder={menu.label}
+                                                        />
+                                                        <span className="text-[9px] text-blue-400 font-mono tracking-tighter">{menuId}</span>
+                                                    </div>
+                                                </div>
+
+                                                {isSelected && (
+                                                    <div className="flex items-center gap-2 bg-slate-50 p-1 rounded-lg ml-2">
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveMenuById(menuId, -1); }}
+                                                            disabled={configIdx === 0}
+                                                            className="w-10 h-10 flex items-center justify-center bg-white hover:bg-blue-600 hover:text-white rounded-lg disabled:opacity-30 transition-all text-blue-700 shadow-sm border border-slate-200 active:translate-y-0.5"
+                                                            title="前に移動"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m18 15-6-6-6 6" /></svg>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); moveMenuById(menuId, 1); }}
+                                                            disabled={configIdx === currentConfig.length - 1}
+                                                            className="w-10 h-10 flex items-center justify-center bg-white hover:bg-blue-600 hover:text-white rounded-lg disabled:opacity-30 transition-all text-blue-700 shadow-sm border border-slate-200 active:translate-y-0.5"
+                                                            title="後に移動"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    });
+                                })()}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-4 border-t-2 border-slate-100 pt-6 mt-4">
+                            <div className="flex gap-4 w-full justify-center">
+                                <button onClick={() => setView('list')} className="btn btn-secondary px-8 py-2 rounded-lg font-bold">キャンセル</button>
+                                <button onClick={saveProject} className="btn btn-primary px-12 py-2 rounded-lg text-lg font-bold bg-blue-600 shadow-md">設定を保存する (V166)</button>
+                            </div>
+                            <button
+                                onClick={() => { if (confirm("キャッシュをクリアして再読み込みしますか？")) { localStorage.clear(); caches.keys().then(keys => keys.forEach(k => caches.delete(k))); location.reload(true); } else { location.reload(true); } }}
+                                className="text-[10px] text-slate-400 hover:text-blue-500 underline transition-colors"
+                            >
+                                ※表示が更新されない場合はキャッシュをクリア
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+
+            if (view === 'detail' && selectedProj) {
+                const projectSubjects = data.subjects.filter(s => s.projectId === selectedProj.id);
+                return (
+                    <div className="p-8">
+                        <div className="flex items-center gap-4 mb-6">
+                            <button onClick={() => setView('list')} className="text-slate-400 hover:text-slate-600 font-bold">&lt; 一覧へ</button>
+                            <h2 className="text-2xl font-bold">プロジェクト詳細</h2>
+                        </div>
+
+                        <div className="bg-white p-6 rounded-lg shadow mb-6 relative">
+                            <div className="absolute top-6 right-6 flex gap-2">
+                                <button onClick={() => openEdit(selectedProj)} className="btn btn-secondary text-sm"><Icon name="edit" /> 編集</button>
+                                <button onClick={() => deleteProject(selectedProj.id)} className="btn btn-danger text-sm"><Icon name="trash" /> 削除</button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4 mb-6">
+                                <div><span className="text-slate-400 text-xs block">プロジェクト名</span><span className="text-lg font-bold">{selectedProj.name}</span></div>
+                                <div><span className="text-slate-400 text-xs block">施設</span><span className="text-lg">{selectedProj.facility}</span></div>
+                            </div>
+
+                            <h3 className="font-bold border-b pb-2 mb-2">運動プログラム</h3>
+                            <table className="w-full text-sm text-left mb-6">
+                                <thead className="bg-slate-50 text-slate-500"><tr><th className="p-2">期間</th><th className="p-2">運動</th><th className="p-2">頻度</th></tr></thead>
+                                <tbody className="divide-y">
+                                    {(selectedProj.program || []).map((p, i) => {
+                                        const ex = (data.exercises || []).find(e => String(e.id) === String(p.exerciseId));
+                                        return (
+                                            <tr key={i}>
+                                                <td className="p-2">{p.startDay} ～ {p.endDay} 日目</td>
+                                                <td className="p-2">{ex ? ex.title : '不明'}</td>
+                                                <td className="p-2">{p.freq}回/週</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                            </table>
+
+                            <h3 className="font-bold border-b pb-2 mb-2">参加被験者リスト</h3>
+                            <table className="w-full text-sm text-left">
+                                <thead className="bg-slate-50 text-slate-500"><tr><th className="p-2">氏名</th><th className="p-2">経過日数</th><th className="p-2">累計実施回数</th></tr></thead>
+                                <tbody className="divide-y">
+                                    {projectSubjects.map(s => {
+                                        const doneCount = s.logs.filter(l => l.done).length;
+                                        return (
+                                            <tr key={s.id}>
+                                                <td className="p-2 font-bold">{s.name}</td>
+                                                <td className="p-2">{s.progressDay}日</td>
+                                                <td className="p-2">{doneCount}回</td>
+                                            </tr>
+                                        );
+                                    })}
+                                    {projectSubjects.length === 0 && <tr><td colSpan="3" className="p-4 text-center text-slate-400">参加者はいません</td></tr>}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                );
+            }
+            return null;
+        };
+
+        const SubjectManager = ({ data, ops }) => {
+            const [view, setView] = useState('list');
+            const [editingSub, setEditingSub] = useState(null);
+            const [form, setForm] = useState({});
+            const [feedText, setFeedText] = useState("");
+
+            // Calculate next ID
+            const getNextId = () => {
+                const ids = data.subjects.map(s => Number(s.id)).filter(n => !isNaN(n));
+                const max = ids.length > 0 ? Math.max(...ids) : 0;
+                return String(max + 1).padStart(4, '0');
+            };
+
+            // Set default ID when entering 'create' view
+            useEffect(() => {
+                if (view === 'create' && !form.id) {
+                    setForm(prev => ({ ...prev, id: getNextId() }));
+                }
+            }, [view, data.subjects]);
+
+            const saveFeedforward = async () => {
+                const sub = { ...editingSub, feedforward: feedText };
+                await ops.update("subjects", sub);
+                setEditingSub(sub); // Update local state for UI
+                alert("フィードバックを保存しました");
+            };
+
+            const addSubject = () => {
+                if (!form.id || !form.name) return alert("IDと氏名は必須です");
+
+                // Allow string IDs like "0001"
+                const newId = form.id;
+
+                // Check for duplicate ID (simple check)
+                const subjects = Array.isArray(data.subjects) ? data.subjects : [];
+                if (subjects.some(s => String(s.id) === String(newId))) {
+                    return alert("このIDは既に使用されています");
+                }
+
+                const newSub = {
+                    id: newId,
+                    name: form.name,
+                    projectId: Number(form.projectId) || (data.projects[0] ? data.projects[0].id : 1),
+                    startDate: data.systemDate || new Date().toISOString().split('T')[0],
+                    email: form.email || "", // Email field for SES
+                    progressDay: 0, logs: [], feedforward: ""
+                };
+                ops.add("subjects", newSub);
+                setView('list');
+                setForm({});
+            };
+
+            const openDetail = (s) => {
+                setEditingSub(s);
+                setFeedText(s.feedforward || "");
+                setView('detail');
+            };
+
+            // CSV Download Mock
+            const downloadCSV = () => {
+                const header = "ID,Name,Project,ProgressDay\n";
+                const rows = data.subjects.map(s => `${s.id},${s.name},${s.projectId},${s.progressDay}`).join("\n");
+                const blob = new Blob([header + rows], { type: 'text/csv' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'subjects.csv';
+                a.click();
+            };
+
+            return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6">被験者管理</h2>
+                    {view === 'list' && (
+                        <div>
+                            <div className="flex justify-between mb-4">
+                                <button onClick={downloadCSV} className="btn btn-secondary text-xs flex gap-1"><Icon name="download" /> CSV</button>
+                                <button onClick={() => { setView('create'); setForm({ id: getNextId() }); }} className="btn btn-primary flex gap-2"><Icon name="plus" /> 新規登録</button>
+                            </div>
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 text-slate-500"><tr><th className="p-4">ID</th><th className="p-4">氏名</th><th className="p-4">プロジェクト</th><th className="p-4">開始日</th><th className="p-4">デバイス</th><th className="p-4">進捗</th><th className="p-4"></th></tr></thead>
+                                    <tbody className="divide-y">
+                                        {data.subjects.map(s => {
+                                            const progress = calculateProgressDay(s.startDate, data.systemDate || new Date().toISOString().split('T')[0]);
+                                            const proj = data.projects.find(p => p.id === s.projectId);
+                                            const projName = proj ? proj.name : '未割り当て';
+                                            return (
+                                                <tr key={s.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => openDetail(s)}>
+                                                    <td className="p-4 font-mono">{s.id}</td>
+                                                    <td className="p-4 font-bold text-blue-600">{s.name}</td>
+                                                    <td className="p-4">{projName}</td>
+                                                    <td className="p-4">{s.startDate}</td>
+                                                    <td className="p-4">
+                                                        {s.fitbitConnected ?
+                                                            <span className="text-teal-600 font-bold text-xs flex items-center gap-1"><span className="text-lg">⌚</span> 連携済</span> :
+                                                            <span className="text-slate-300 text-xs">未連携</span>
+                                                        }
+                                                    </td>
+                                                    <td className="p-4">Day {progress}</td>
+                                                    <td className="p-4 flex gap-2">
+                                                        <button className="btn btn-secondary text-xs">詳細</button>
+                                                        <button onClick={(e) => { e.stopPropagation(); ops.remove("subjects", s.id); }} className="btn btn-danger text-xs flex items-center gap-1"><Icon name="trash" /> 削除</button>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {view === 'create' && (
+                        <div className="bg-white p-6 rounded-lg shadow max-w-lg mx-auto">
+                            <h3 className="font-bold mb-4">新規被験者登録</h3>
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-bold mb-1">被験者ID (任意設定)</label>
+                                    <input className="border w-full p-2 rounded font-mono" value={form.id || ''} onChange={e => setForm({ ...form, id: e.target.value })} />
+                                    <p className="text-[10px] text-slate-400">デフォルトで連番("0001"~)が振られますが、変更可能です。</p>
+                                </div>
+                                <div><label className="block text-sm font-bold mb-1">氏名</label><input className="border w-full p-2 rounded" value={form.name || ''} placeholder="例: 山田 花子" onChange={e => setForm({ ...form, name: e.target.value })} /></div>
+                                <div>
+                                    <select className="border w-full p-2 rounded" value={form.projectId || ''} onChange={e => setForm({ ...form, projectId: e.target.value })}>
+                                        <option value="">プロジェクトを選択</option>
+                                        {(data.projects || []).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                    </select>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-bold mb-1">メールアドレス (SES通知用)</label>
+                                    <input className="border w-full p-2 rounded" value={form.email || ''} placeholder="user@example.com" type="email" onChange={e => setForm({ ...form, email: e.target.value })} />
+                                </div>
+                                <div className="pt-4 flex gap-2">
+                                    <button onClick={addSubject} className="btn btn-primary flex-1">登録</button>
+                                    <button onClick={() => setView('list')} className="btn btn-secondary flex-1">キャンセル</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    {view === 'detail' && editingSub && (
+                        <div className="grid grid-cols-2 gap-6">
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="font-bold border-b pb-2 mb-4">実施ログ ({editingSub.name})</h3>
+                                <div className="space-y-2 h-80 overflow-y-auto">
+                                    {(!editingSub.logs || editingSub.logs.length === 0) ? (
+                                        <div className="p-8 text-center text-slate-400 bg-slate-50 rounded-lg border border-dashed">
+                                            記録がありません
+                                        </div>
+                                    ) : (
+                                        (editingSub.logs || []).map((l, i) => (
+                                            <div key={i} className="p-3 border rounded-lg hover:bg-slate-50 transition shadow-sm">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <span className="font-bold text-blue-600">Day {l.day}</span>
+                                                    <span className={`text-xs px-2 py-0.5 rounded-full ${l.done ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+                                                        {l.done ? '完了' : '未完了'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-sm text-slate-600 mb-1">
+                                                    {l.type === 'condition' ? '体調報告' : '運動実施'} (RPE: {l.rpe || '-'})
+                                                </div>
+                                                {l.comment && <div className="text-xs text-slate-500 bg-slate-100 p-2 rounded mt-1 italic">"{l.comment}"</div>}
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+                            </div>
+                            <div className="bg-white p-6 rounded-lg shadow">
+                                <h3 className="font-bold border-b pb-2 mb-4">フィードフォワード</h3>
+                                <div className="mb-4 text-xs text-slate-400 bg-blue-50 p-2 rounded border border-blue-100 italic">
+                                    ※保存するとユーザーのホーム画面にメッセージが表示されます。
+                                </div>
+                                <textarea
+                                    className="w-full border p-3 rounded-lg h-48 mb-4 focus:ring-2 focus:ring-blue-500 outline-none"
+                                    placeholder="メッセージを入力してください..."
+                                    value={feedText}
+                                    onChange={e => setFeedText(e.target.value)}
+                                ></textarea>
+                                <div className="flex gap-4">
+                                    <button onClick={() => setView('list')} className="btn btn-secondary flex-1">戻る</button>
+                                    <button onClick={saveFeedforward} className="btn btn-primary flex-1 shadow-lg">メッセージを保存</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+        // 4. Column Manager
+        const ColumnManager = ({ data, ops }) => {
+            const [view, setView] = useState('list');
+            const [form, setForm] = useState({ title: '', category: '', date: '0日目〜', type: 'text' });
+
+            // Set default category
+            useEffect(() => {
+                if (!form.category && data.categories.length > 0) {
+                    setForm(prev => ({ ...prev, category: data.categories[0].name }));
+                }
+            }, [data.categories]);
+
+            const addColumn = () => {
+                if (!form.title) return;
+                const newCol = { ...form, id: Date.now() };
+                ops.add("columns", newCol);
+                setView('list');
+                setForm({ title: '', category: form.category, date: '0日目〜', type: 'text' });
+            };
+
+            const deleteColumn = (id) => {
+                ops.remove("columns", id);
+            };
+
+            return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6">コラム管理</h2>
+                    {view === 'list' && (
+                        <div>
+                            <div className="flex justify-end mb-4">
+                                <button onClick={() => setView('new')} className="btn btn-primary flex gap-2"><Icon name="plus" /> 新規登録</button>
+                            </div>
+                            <div className="bg-white rounded-lg shadow overflow-hidden">
+                                <table className="w-full text-left text-sm">
+                                    <thead className="bg-slate-50 text-slate-500"><tr><th className="p-4">タイトル</th><th className="p-4">カテゴリ</th><th className="p-4">掲載時期</th><th className="p-4">形式</th><th className="p-4">操作</th></tr></thead>
+                                    <tbody className="divide-y">
+                                        {data.columns && data.columns.map(c => (
+                                            <tr key={c.id} className="hover:bg-slate-50">
+                                                <td className="p-4 font-bold">{c.title}</td>
+                                                <td className="p-4">{c.category}</td>
+                                                <td className="p-4">{c.date}</td>
+                                                <td className="p-4">{c.type}</td>
+                                                <td className="p-4"><button onClick={() => deleteColumn(c.id)} className="text-red-500"><Icon name="trash" /></button></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                    {view === 'new' && (
+                        <div className="bg-white p-6 rounded-lg shadow max-w-lg mx-auto">
+                            <h3 className="font-bold mb-4">コラム登録</h3>
+                            <div className="space-y-4">
+                                <input className="border w-full p-2 rounded" placeholder="タイトル" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} />
+                                <select className="border w-full p-2 rounded" value={form.category} onChange={e => setForm({ ...form, category: e.target.value })}>
+                                    <option value="">カテゴリを選択</option>
+                                    {data.categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                </select>
+                                <input className="border w-full p-2 rounded" placeholder="掲載時期 (例: 7日目〜)" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+                                <div>
+                                    <label className="block text-xs font-bold mb-1">形式</label>
+                                    <div className="flex gap-4">
+                                        <label><input type="radio" name="type" checked={form.type === 'text'} onChange={() => setForm({ ...form, type: 'text' })} /> テキスト</label>
+                                        <label><input type="radio" name="type" checked={form.type === 'file'} onChange={() => setForm({ ...form, type: 'file' })} /> ファイル</label>
+                                    </div>
+                                </div>
+                                <button onClick={addColumn} className="btn btn-primary w-full">登録</button>
+                                <button onClick={() => setView('list')} className="btn btn-secondary w-full">キャンセル</button>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 5. Settings (Admin Accounts & Password)
+        const Settings = ({ data, ops }) => {
+            const [seeding, setSeeding] = useState(false);
+            const [connecting, setConnecting] = useState(false); // Fitbit state
+
+            const connectFitbit = async () => {
+                setConnecting(true);
+                try {
+                    // Simulate OAuth Popup
+                    await new Promise(r => setTimeout(r, 1500));
+                    alert("Fitbitアカウントと連携しました (Mock)\nAWS版ではトークン管理機能はまだ実装されていませんが、連携フラグをONにします。");
+                } catch (e) {
+                    console.error(e);
+                    alert("連携に失敗しました: " + e.message);
+                } finally {
+                    setConnecting(false);
+                }
+            };
+
+            const seed30DaysData = async () => {
+                if (!confirm("ID:1 のユーザーに過去30日分のテストデータを投入しますか？\n（既存のログに追記されます）")) return;
+                setSeeding(true);
+
+                try {
+                    const today = new Date();
+                    let successCount = 0;
+
+                    for (let i = 30; i > 0; i--) {
+                        const d = new Date(today);
+                        d.setDate(today.getDate() - i);
+                        const dateStr = d.toISOString();
+                        const dayCount = 31 - i;
+
+                        // Pattern Generation
+                        let fatigue = 4, pain = 0, mood = "mid";
+                        if (i % 7 === 0) { fatigue = 7; pain = 3; mood = "low"; }
+                        else if (i % 5 === 0) { fatigue = 2; pain = 0; mood = "high"; }
+
+                        let hrv = 45;
+                        if (fatigue >= 6) hrv = 18;
+                        else if (fatigue <= 3) hrv = 60;
+
+                        // Log Condition
+                        const conditionLog = {
+                            type: "condition",
+                            date: dateStr,
+                            day: dayCount,
+                            fatigue, pain, mood, hrv
+                        };
+
+                        const res1 = await fetch(`${window.AWS_CONFIG.apiBase}/logs`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ subjectId: "1", log: conditionLog })
+                        });
+                        if (!res1.ok) throw new Error(`Condition Log failed: ${res1.status} - ${await res1.text()}`);
+                        successCount++;
+
+                        // Log Activity
+                        const steps = Math.floor(Math.random() * 12000) + 1000;
+                        const mvpa = Math.floor(steps * 0.005);
+
+                        if (fatigue < 6) {
+                            let hour = (Math.random() > 0.3) ? (6 + Math.floor(Math.random() * 5)) : (18 + Math.floor(Math.random() * 3));
+                            const activityDate = new Date(d);
+                            activityDate.setHours(hour, 0, 0);
+
+                            const activityLog = {
+                                type: "activity",
+                                date: activityDate.toISOString(),
+                                day: dayCount,
+                                name: "ウォーキング",
+                                mets: 3.0,
+                                duration: 20,
+                                steps: steps, mvpa: mvpa, done: true
+                            };
+                            const res2 = await fetch(`${window.AWS_CONFIG.apiBase}/logs`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ subjectId: "1", log: activityLog })
+                            });
+                            if (!res2.ok) throw new Error(`Activity Log failed: ${res2.status} - ${await res2.text()}`);
+                            successCount++;
+                        } else {
+                            const dailyLog = {
+                                type: "daily_summary",
+                                date: dateStr,
+                                day: dayCount,
+                                steps: Math.floor(Math.random() * 3000), mvpa: 0
+                            };
+                            const res3 = await fetch(`${window.AWS_CONFIG.apiBase}/logs`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ subjectId: "1", log: dailyLog })
+                            });
+                            if (!res3.ok) throw new Error(`Daily Log failed: ${res3.status} - ${await res3.text()}`);
+                            successCount++;
+                        }
+                    }
+
+                    alert(`完了: ${successCount}件のデータを投入しました！`);
+
+                } catch (e) {
+                    console.error(e);
+                    alert("エラー: " + e.message);
+                } finally {
+                    setSeeding(false);
+                }
+            };
+
+            return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6">設定</h2>
+
+                    {/* Debug Section */}
+                    <div className="mb-6 bg-slate-800 text-white p-6 rounded-lg shadow border border-slate-700">
+                        <div className="flex items-center gap-2 mb-4">
+                            <Icon name="settings" />
+                            <h3 className="font-bold text-lg">開発者デバッグ・テスト</h3>
+                        </div>
+                        <p className="text-sm text-slate-400 mb-4">
+                            アプリアルゴリズム検証用のデータを生成します。
+                        </p>
+                        <div className="flex gap-4">
+                            <button
+                                onClick={seed30DaysData}
+                                disabled={seeding}
+                                className={`btn bg-emerald-600 hover:bg-emerald-500 text-white border-none ${seeding ? 'opacity-50 cursor-not-allowed' : ''}`}
+                            >
+                                {seeding ? '処理中...' : '📅 過去30日分の活動データを投入 (ID: 1)'}
+                            </button>
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">※ ID: 1 のユーザーの既存ログは全て上書きされます。</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+
+                        <div className="bg-white p-6 rounded-lg shadow">
+                            <h3 className="font-bold border-b pb-2 mb-4">パスワード変更</h3>
+                            <div className="space-y-3">
+                                <input type="password" placeholder="現在のパスワード" className="border w-full p-2 rounded" />
+                                <input type="password" placeholder="新しいパスワード" className="border w-full p-2 rounded" />
+                                <input type="password" placeholder="新しいパスワード(確認)" className="border w-full p-2 rounded" />
+                                <button className="btn btn-primary w-full">変更する</button>
+                            </div>
+                        </div>
+                        <div className="bg-white p-6 rounded-lg shadow">
+                            <h3 className="font-bold border-b pb-2 mb-4">管理アカウント一覧</h3>
+                            <ul className="space-y-2 text-sm mb-4">
+                                {data.admins && data.admins.map(a => (
+                                    <li key={a.id} className="flex justify-between items-center p-2 bg-slate-50 rounded">
+                                        <span>{a.name} ({a.affiliation})</span>
+                                        <button className="text-xs text-red-500">削除</button>
+                                    </li>
+                                ))}
+                            </ul>
+                            <button className="btn btn-secondary w-full text-sm">アカウント追加</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // 6. Category Manager
+        const CategoryManager = ({ data, ops }) => {
+            const [form, setForm] = useState({ id: 0, name: '' });
+            const [view, setView] = useState('list');
+
+            const save = () => {
+                if (!form.name) return;
+                if (form.id) {
+                    ops.update("categories", form);
+                } else {
+                    ops.add("categories", { ...form, id: Date.now() });
+                }
+                setForm({ id: 0, name: '' });
+                setView('list');
+            };
+
+            const remove = (id) => ops.remove("categories", id);
+            const edit = (cat) => { setForm(cat); setView('create'); };
+
+            if (view === 'list') return (
+                <div className="p-8">
+                    <div className="flex justify-between mb-6">
+                        <h2 className="text-2xl font-bold">カテゴリ管理</h2>
+                        <button onClick={() => { setForm({ id: 0, name: '' }); setView('create'); }} className="btn btn-primary"><Icon name="plus" /> 新規作成</button>
+                    </div>
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50"><tr><th className="p-4">ID</th><th className="p-4">カテゴリ名</th><th className="p-4">操作</th></tr></thead>
+                            <tbody className="divide-y">
+                                {data.categories && data.categories.map(c => (
+                                    <tr key={c.id}>
+                                        <td className="p-4 text-slate-400 font-mono text-xs">{c.id}</td>
+                                        <td className="p-4 font-bold">{c.name}</td>
+                                        <td className="p-4 flex gap-2">
+                                            <button onClick={() => edit(c)} className="btn btn-secondary text-xs"><Icon name="edit" /> 編集</button>
+                                            <button onClick={() => remove(c.id)} className="btn btn-danger text-xs"><Icon name="trash" /> 削除</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {(!data.categories || data.categories.length === 0) && <tr><td colSpan="3" className="p-8 text-center text-slate-400">カテゴリがありません</td></tr>}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            );
+
+            return (
+                <div className="p-8">
+                    <h2 className="text-2xl font-bold mb-6">{form.id ? 'カテゴリ編集' : 'カテゴリ作成'}</h2>
+                    <div className="bg-white p-6 rounded-lg shadow max-w-lg">
+                        <div className="mb-4">
+                            <label className="block text-sm font-bold mb-1">カテゴリ名</label>
+                            <input className="border w-full p-2 rounded" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
+                            <p className="text-xs text-slate-400 mt-1">※ この名称は、運動やプロジェクトの選択肢として使用されます。</p>
+                        </div>
+                        <div className="flex gap-4 justify-center border-t pt-4">
+                            <button onClick={() => setView('list')} className="btn btn-secondary">キャンセル</button>
+                            <button onClick={save} className="btn btn-primary">保存</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- APP ROOT ---
+        const App = () => {
+            const { data, setData, add, update, remove, downloadCSV } = useApi();
+            const ops = { add, update, remove }; // Bundle ops
+            const [page, setPage] = useState('home');
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+            if (!isLoggedIn) return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+
+            return (
+                <div className="flex h-screen w-full">
+                    <Sidebar page={page} setPage={setPage} data={data} setData={setData} onLogout={() => setIsLoggedIn(false)} downloadCSV={downloadCSV} />
+                    <main className="flex-1 overflow-auto">
+                        {page === 'home' && <Dashboard data={data} />}
+                        {page === 'video' && <ExerciseManager data={data} ops={ops} />}
+                        {page === 'folder' && <ProjectManager data={data} ops={ops} />}
+                        {page === 'users' && <SubjectManager data={data} ops={ops} />}
+                        {page === 'file' && <ColumnManager data={data} ops={ops} />}
+                        {page === 'category' && <CategoryManager data={data} ops={ops} />}
+                        {page === 'settings' && <Settings data={data} ops={ops} />}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+
+</html>

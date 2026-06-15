@@ -1,0 +1,1113 @@
+openapi: 3.1.0
+info:
+  title: CRF Survivor Planner API
+  version: 1.0.0
+  description: |
+    Planning-first module for cancer-related fatigue (CRF) post-treatment survivors.
+    External integrations (Google Calendar / Fitbit) are assumed to already exist and are OUT OF SCOPE.
+    This API focuses on:
+      - Week/day planner view integrating Tasks + RestBlocks + ExternalEvents (read-only)
+      - User-defined METs planning for HOUSEWORK/OUTING (pre) and post-hoc override (actual)
+      - Daily state -> computed good_day_score and risk_flag
+      - Weekly summary (goal/achieved/gap) and warnings
+      - METs-based suggestions on good days when weekly gap exists
+servers:
+  - url: https://api.example.com
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Settings
+  - name: PlannerView
+  - name: DailyState
+  - name: Tasks
+  - name: RestBlocks
+  - name: Suggestions
+  - name: WeeklySummary
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  responses:
+    Unauthorized:
+      description: Unauthorized
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            unauthorized:
+              value:
+                code: AUTH_UNAUTHORIZED
+                message: "Missing or invalid token."
+                details: {}
+    Forbidden:
+      description: Forbidden
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            forbidden:
+              value:
+                code: AUTH_FORBIDDEN
+                message: "Not allowed."
+                details: {}
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            validation:
+              value:
+                code: VALIDATION_ERROR
+                message: "Invalid request."
+                details:
+                  fieldErrors:
+                    planned_mets: "required"
+                    planned_duration_min: "must be between 1 and 600"
+    NotFound:
+      description: Not found
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            notfound:
+              value:
+                code: NOT_FOUND
+                message: "Resource not found."
+                details: {}
+    Conflict:
+      description: Conflict
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            conflict:
+              value:
+                code: CONFLICT
+                message: "Duplicate or conflicting update."
+                details: {}
+    RateLimited:
+      description: Rate limited
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            rate:
+              value:
+                code: RATE_LIMITED
+                message: "Too many requests."
+                details: {}
+    InternalError:
+      description: Internal error
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+          examples:
+            internal:
+              value:
+                code: INTERNAL_ERROR
+                message: "Unexpected error."
+                details: { traceId: "abc-123" }
+
+  schemas:
+    Error:
+      type: object
+      required: [code, message, details]
+      properties:
+        code:
+          type: string
+          enum:
+            - AUTH_UNAUTHORIZED
+            - AUTH_FORBIDDEN
+            - VALIDATION_ERROR
+            - NOT_FOUND
+            - CONFLICT
+            - RATE_LIMITED
+            - INTERNAL_ERROR
+        message: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    Date:
+      type: string
+      format: date
+      examples: ["2026-02-06"]
+
+    ISODateTime:
+      type: string
+      format: date-time
+      examples: ["2026-02-06T09:00:00+09:00"]
+
+    TimeBlock:
+      type: string
+      enum: [AM, PM, EVENING]
+
+    Category:
+      type: string
+      enum: [HOUSEWORK, OUTING, EXERCISE, WORK, SELFCARE, HOBBY, OTHER]
+
+    TaskStatus:
+      type: string
+      enum: [PLANNED, DONE, PARTIAL, CANCELLED]
+
+    Difficulty:
+      type: integer
+      enum: [-1, 0, 1]
+      description: "-1 easier than expected, 0 as expected, 1 harder than expected"
+
+    WarningType:
+      type: string
+      enum: [OVERBOOKING, SURGE_RISK, CARRYOVER_RISK, LOW_SLEEP_RISK]
+
+    WarningSeverity:
+      type: string
+      enum: [INFO, WARN, HIGH]
+
+    Warning:
+      type: object
+      required: [type, severity, message]
+      properties:
+        type: { $ref: "#/components/schemas/WarningType" }
+        severity: { $ref: "#/components/schemas/WarningSeverity" }
+        message: { type: string }
+        context:
+          type: object
+          additionalProperties: true
+
+    # ---------------- Settings ----------------
+    UserPlannerSettings:
+      type: object
+      required: [week_goal_type, week_goal_value, intensity_cap, week_start_day, rest_block_default_minutes, surge_guard_threshold_ratio]
+      properties:
+        week_goal_type:
+          type: string
+          enum: [MET_MIN]
+          description: "Canonical unit for weekly maintenance target (fixed in MVP)."
+        week_goal_value:
+          type: number
+          minimum: 0
+          description: "Weekly target in MET-min."
+          examples: [600]
+        intensity_cap:
+          type: string
+          enum: [LIGHT, MODERATE]
+          description: "Max suggested intensity; vigorous is not offered in MVP."
+        week_start_day:
+          type: string
+          enum: [MONDAY, SUNDAY]
+        rest_block_default_minutes:
+          type: integer
+          minimum: 1
+          maximum: 60
+          default: 10
+        surge_guard_threshold_ratio:
+          type: number
+          minimum: 0.0
+          maximum: 1.0
+          default: 0.30
+          description: "Surge guard ratio (e.g., 0.30 = +30%)."
+
+    # ---------------- Daily State ----------------
+    DailyStateInput:
+      type: object
+      required: [energy_budget_0_100, fatigue_0_10, pain_0_10, sleep_quality]
+      properties:
+        energy_budget_0_100: { type: integer, minimum: 0, maximum: 100 }
+        fatigue_0_10: { type: integer, minimum: 0, maximum: 10 }
+        pain_0_10: { type: integer, minimum: 0, maximum: 10 }
+        sleep_quality:
+          type: integer
+          enum: [0, 1, 2]
+          description: "0=poor, 1=ok, 2=good"
+
+    DailyState:
+      allOf:
+        - $ref: "#/components/schemas/DailyStateInput"
+        - type: object
+          required: [date, good_day_score_0_100, good_day, risk_flag, updated_at]
+          properties:
+            date: { $ref: "#/components/schemas/Date" }
+            good_day_score_0_100: { type: integer, minimum: 0, maximum: 100 }
+            good_day: { type: boolean }
+            risk_flag:
+              type: string
+              enum: [LOW, MID, HIGH]
+            updated_at: { $ref: "#/components/schemas/ISODateTime" }
+            computation_trace:
+              type: object
+              description: "Optional debug payload for explainability"
+              additionalProperties: true
+
+    # ---------------- Rest Blocks ----------------
+    RestBlockReason:
+      type: string
+      enum: [AUTO_INSERT_BEFORE_TASK, AUTO_INSERT_AFTER_TASK, USER_ADDED, SURGE_GUARD]
+
+    RestBlockCreate:
+      type: object
+      required: [date, time_block, minutes]
+      properties:
+        date: { $ref: "#/components/schemas/Date" }
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        minutes: { type: integer, minimum: 1, maximum: 180 }
+
+    RestBlock:
+      type: object
+      required: [id, date, time_block, minutes, reason, created_at, updated_at]
+      properties:
+        id: { type: string, examples: ["rb_01HX..."] }
+        date: { $ref: "#/components/schemas/Date" }
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        minutes: { type: integer, minimum: 1, maximum: 180 }
+        reason: { $ref: "#/components/schemas/RestBlockReason" }
+        created_at: { $ref: "#/components/schemas/ISODateTime" }
+        updated_at: { $ref: "#/components/schemas/ISODateTime" }
+
+    # ---------------- External Events ----------------
+    ExternalEventBlock:
+      type: object
+      description: "Read-only planning block representing pre-synced external calendar events."
+      required: [source, external_event_id, start_at, end_at, title, is_all_day]
+      properties:
+        source:
+          type: string
+          enum: [GOOGLE_CALENDAR, OTHER]
+        external_event_id: { type: string, examples: ["gcal_evt_abc123"] }
+        start_at: { $ref: "#/components/schemas/ISODateTime" }
+        end_at: { $ref: "#/components/schemas/ISODateTime" }
+        title: { type: string }
+        location: { type: string }
+        is_all_day: { type: boolean }
+
+    # ---------------- Tasks ----------------
+    TaskCreate:
+      type: object
+      required: [date, time_block, title, category, planned_duration_min, planned_mets]
+      properties:
+        date: { $ref: "#/components/schemas/Date" }
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        start_at:
+          $ref: "#/components/schemas/ISODateTime"
+          description: "Optional; if omitted, block-based scheduling is used."
+        title: { type: string, minLength: 1, maxLength: 120 }
+        category: { $ref: "#/components/schemas/Category" }
+        planned_duration_min: { type: integer, minimum: 1, maximum: 600 }
+        planned_mets:
+          type: number
+          minimum: 0.5
+          maximum: 12.0
+          description: "User-defined for HOUSEWORK/OUTING; suggested for EXERCISE."
+        auto_rest:
+          type: boolean
+          default: true
+        notes:
+          type: string
+          maxLength: 2000
+        split_template_id:
+          type: string
+          nullable: true
+          description: "MVP: optional; server may expand into sub-tasks if supported."
+
+    TaskUpdate:
+      type: object
+      properties:
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        start_at: { $ref: "#/components/schemas/ISODateTime" }
+        title: { type: string, minLength: 1, maxLength: 120 }
+        category: { $ref: "#/components/schemas/Category" }
+        planned_duration_min: { type: integer, minimum: 1, maximum: 600 }
+        planned_mets: { type: number, minimum: 0.5, maximum: 12.0 }
+        auto_rest: { type: boolean }
+        notes: { type: string, maxLength: 2000 }
+
+    TaskComplete:
+      type: object
+      required: [status, actual_duration_min, actual_mets, post_fatigue_0_10, perceived_difficulty, carryover_to_nextday]
+      properties:
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        actual_duration_min: { type: integer, minimum: 0, maximum: 600 }
+        actual_mets: { type: number, minimum: 0.0, maximum: 12.0 }
+        post_fatigue_0_10: { type: integer, minimum: 0, maximum: 10 }
+        perceived_difficulty: { $ref: "#/components/schemas/Difficulty" }
+        carryover_to_nextday: { type: boolean }
+        completed_at:
+          $ref: "#/components/schemas/ISODateTime"
+          description: "Optional; server can set now() if omitted."
+
+    Task:
+      type: object
+      required:
+        - id
+        - date
+        - time_block
+        - title
+        - category
+        - planned_duration_min
+        - planned_mets
+        - planned_met_min
+        - status
+        - created_at
+        - updated_at
+      properties:
+        id: { type: string, examples: ["tsk_01HX..."] }
+        date: { $ref: "#/components/schemas/Date" }
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        start_at: { $ref: "#/components/schemas/ISODateTime" }
+        title: { type: string }
+        category: { $ref: "#/components/schemas/Category" }
+        planned_duration_min: { type: integer }
+        planned_mets: { type: number }
+        planned_met_min:
+          type: number
+          description: "Server computed: planned_mets * planned_duration_min"
+        auto_rest: { type: boolean }
+        notes: { type: string }
+        status: { $ref: "#/components/schemas/TaskStatus" }
+        actual_duration_min: { type: integer }
+        actual_mets: { type: number }
+        actual_met_min:
+          type: number
+          description: "Server computed: actual_mets * actual_duration_min"
+        post_fatigue_0_10: { type: integer }
+        perceived_difficulty: { $ref: "#/components/schemas/Difficulty" }
+        carryover_to_nextday: { type: boolean }
+        created_at: { $ref: "#/components/schemas/ISODateTime" }
+        updated_at: { $ref: "#/components/schemas/ISODateTime" }
+
+    # ---------------- Weekly Summary ----------------
+    WeeklySummary:
+      type: object
+      required:
+        - week_id
+        - week_start_date
+        - goal_met_min
+        - achieved_met_min_total
+        - achieved_met_min_from_tasks
+        - achieved_met_min_from_external_activity
+        - planned_met_min_week_total
+        - gap_met_min
+        - warnings
+      properties:
+        week_id: { type: string, examples: ["2026-W06"] }
+        week_start_date: { $ref: "#/components/schemas/Date" }
+        goal_met_min: { type: number }
+        achieved_met_min_total: { type: number }
+        achieved_met_min_from_tasks: { type: number }
+        achieved_met_min_from_external_activity:
+          type: number
+          description: "Read-only aggregated MET-min from existing wearable backend (out of scope)."
+        planned_met_min_week_total:
+          type: number
+          description: "Sum of planned MET-min across tasks in the week."
+        gap_met_min:
+          type: number
+          description: "goal_met_min - achieved_met_min_total"
+        warnings:
+          type: array
+          items: { $ref: "#/components/schemas/Warning" }
+
+    # ---------------- Suggestions ----------------
+    SuggestionKind:
+      type: string
+      enum: [RECOVERY, LIGHT, MODERATE]
+
+    SuggestionCard:
+      type: object
+      required: [id, kind, title, mets, duration_options_min, estimated_met_min, rationale]
+      properties:
+        id: { type: string, examples: ["sg_01HX..."] }
+        kind: { $ref: "#/components/schemas/SuggestionKind" }
+        title: { type: string }
+        mets: { type: number, minimum: 0.5, maximum: 12.0 }
+        duration_options_min:
+          type: array
+          items: { type: integer }
+          examples: [[10, 15, 20, 30]]
+        estimated_met_min: { type: number }
+        rationale:
+          type: object
+          required: [good_day, weekly_gap_met_min, risk_flag]
+          properties:
+            good_day: { type: boolean }
+            weekly_gap_met_min: { type: number }
+            risk_flag: { type: string, enum: [LOW, MID, HIGH] }
+
+    SuggestionResponse:
+      type: object
+      required: [date, good_day, good_day_score_0_100, risk_flag, weekly_gap_met_min, cards]
+      properties:
+        date: { $ref: "#/components/schemas/Date" }
+        good_day: { type: boolean }
+        good_day_score_0_100: { type: integer }
+        risk_flag: { type: string, enum: [LOW, MID, HIGH] }
+        weekly_gap_met_min: { type: number }
+        cards:
+          type: array
+          items: { $ref: "#/components/schemas/SuggestionCard" }
+
+    SuggestionAccept:
+      type: object
+      required: [suggestion_id, date, time_block, duration_min]
+      properties:
+        suggestion_id: { type: string }
+        date: { $ref: "#/components/schemas/Date" }
+        time_block: { $ref: "#/components/schemas/TimeBlock" }
+        duration_min: { type: integer, minimum: 5, maximum: 180 }
+        override_mets:
+          type: number
+          nullable: true
+        auto_rest: { type: boolean, default: true }
+
+    # ---------------- Planner Views ----------------
+    PlannerDay:
+      type: object
+      required: [date, daily_state, tasks, rest_blocks, external_events]
+      properties:
+        date: { $ref: "#/components/schemas/Date" }
+        daily_state:
+          anyOf:
+            - $ref: "#/components/schemas/DailyState"
+            - type: "null"
+        tasks:
+          type: array
+          items: { $ref: "#/components/schemas/Task" }
+        rest_blocks:
+          type: array
+          items: { $ref: "#/components/schemas/RestBlock" }
+        external_events:
+          type: array
+          items: { $ref: "#/components/schemas/ExternalEventBlock" }
+
+    PlannerWeek:
+      type: object
+      required: [week_id, week_start_date, days, weekly_summary]
+      properties:
+        week_id: { type: string }
+        week_start_date: { $ref: "#/components/schemas/Date" }
+        days:
+          type: array
+          minItems: 7
+          maxItems: 7
+          items: { $ref: "#/components/schemas/PlannerDay" }
+        weekly_summary: { $ref: "#/components/schemas/WeeklySummary" }
+
+paths:
+  /planner/settings:
+    get:
+      tags: [Settings]
+      summary: Get planner settings
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPlannerSettings" }
+              examples:
+                ok:
+                  value:
+                    week_goal_type: MET_MIN
+                    week_goal_value: 600
+                    intensity_cap: MODERATE
+                    week_start_day: MONDAY
+                    rest_block_default_minutes: 10
+                    surge_guard_threshold_ratio: 0.3
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    put:
+      tags: [Settings]
+      summary: Update planner settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UserPlannerSettings" }
+            examples:
+              update:
+                value:
+                  week_goal_type: MET_MIN
+                  week_goal_value: 750
+                  intensity_cap: MODERATE
+                  week_start_day: MONDAY
+                  rest_block_default_minutes: 10
+                  surge_guard_threshold_ratio: 0.3
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserPlannerSettings" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/daily-state/{date}:
+    put:
+      tags: [DailyState]
+      summary: Upsert daily state (server computes good_day_score, good_day, risk_flag)
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Date" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DailyStateInput" }
+            examples:
+              input:
+                value:
+                  energy_budget_0_100: 75
+                  fatigue_0_10: 3
+                  pain_0_10: 2
+                  sleep_quality: 2
+      responses:
+        "200":
+          description: Saved with computed flags
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DailyState" }
+              examples:
+                saved:
+                  value:
+                    date: "2026-02-06"
+                    energy_budget_0_100: 75
+                    fatigue_0_10: 3
+                    pain_0_10: 2
+                    sleep_quality: 2
+                    good_day_score_0_100: 93
+                    good_day: true
+                    risk_flag: LOW
+                    updated_at: "2026-02-06T09:05:00+09:00"
+                    computation_trace:
+                      sleep_bonus: 10
+                      budget_bonus: 10
+                      fatigue_penalty: 18
+                      pain_penalty: 6
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+    get:
+      tags: [DailyState]
+      summary: Get daily state (null if not set)
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { $ref: "#/components/schemas/Date" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                anyOf:
+                  - $ref: "#/components/schemas/DailyState"
+                  - type: "null"
+              examples:
+                none:
+                  value: null
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/week:
+    get:
+      tags: [PlannerView]
+      summary: Get week planner view (tasks + rest + external events + weekly summary)
+      parameters:
+        - name: week_id
+          in: query
+          required: true
+          schema:
+            type: string
+            examples: ["2026-W06"]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannerWeek" }
+              examples:
+                week:
+                  value:
+                    week_id: "2026-W06"
+                    week_start_date: "2026-02-02"
+                    weekly_summary:
+                      week_id: "2026-W06"
+                      week_start_date: "2026-02-02"
+                      goal_met_min: 600
+                      achieved_met_min_total: 320
+                      achieved_met_min_from_tasks: 140
+                      achieved_met_min_from_external_activity: 180
+                      planned_met_min_week_total: 540
+                      gap_met_min: 280
+                      warnings:
+                        - type: SURGE_RISK
+                          severity: WARN
+                          message: "本日の計画が直近平均より30%超です。分割・休息を検討してください。"
+                          context:
+                            date: "2026-02-06"
+                            planned_today_met_min: 120
+                            trailing_avg_met_min: 80
+                    days:
+                      - date: "2026-02-02"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+                      - date: "2026-02-03"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+                      - date: "2026-02-04"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+                      - date: "2026-02-05"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+                      - date: "2026-02-06"
+                        daily_state:
+                          date: "2026-02-06"
+                          energy_budget_0_100: 75
+                          fatigue_0_10: 3
+                          pain_0_10: 2
+                          sleep_quality: 2
+                          good_day_score_0_100: 93
+                          good_day: true
+                          risk_flag: LOW
+                          updated_at: "2026-02-06T09:05:00+09:00"
+                        tasks:
+                          - id: "tsk_01HXAAA"
+                            date: "2026-02-06"
+                            time_block: AM
+                            title: "買い物"
+                            category: OUTING
+                            planned_duration_min: 30
+                            planned_mets: 3.0
+                            planned_met_min: 90
+                            auto_rest: true
+                            notes: ""
+                            status: PLANNED
+                            actual_duration_min: 0
+                            actual_mets: 0
+                            actual_met_min: 0
+                            post_fatigue_0_10: 0
+                            perceived_difficulty: 0
+                            carryover_to_nextday: false
+                            created_at: "2026-02-06T09:10:00+09:00"
+                            updated_at: "2026-02-06T09:10:00+09:00"
+                        rest_blocks:
+                          - id: "rb_01HXBBB"
+                            date: "2026-02-06"
+                            time_block: AM
+                            minutes: 10
+                            reason: AUTO_INSERT_BEFORE_TASK
+                            created_at: "2026-02-06T09:10:01+09:00"
+                            updated_at: "2026-02-06T09:10:01+09:00"
+                          - id: "rb_01HXBBC"
+                            date: "2026-02-06"
+                            time_block: AM
+                            minutes: 10
+                            reason: AUTO_INSERT_AFTER_TASK
+                            created_at: "2026-02-06T09:10:01+09:00"
+                            updated_at: "2026-02-06T09:10:01+09:00"
+                        external_events:
+                          - source: GOOGLE_CALENDAR
+                            external_event_id: "gcal_evt_abc123"
+                            start_at: "2026-02-06T13:00:00+09:00"
+                            end_at: "2026-02-06T14:00:00+09:00"
+                            title: "通院（フォロー）"
+                            location: "病院"
+                            is_all_day: false
+                      - date: "2026-02-07"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+                      - date: "2026-02-08"
+                        daily_state: null
+                        tasks: []
+                        rest_blocks: []
+                        external_events: []
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/day:
+    get:
+      tags: [PlannerView]
+      summary: Get day planner view
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Date" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PlannerDay" }
+              examples:
+                day:
+                  value:
+                    date: "2026-02-06"
+                    daily_state: null
+                    tasks: []
+                    rest_blocks: []
+                    external_events: []
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/tasks:
+    get:
+      tags: [Tasks]
+      summary: List tasks for a date
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Date" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Task" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+    post:
+      tags: [Tasks]
+      summary: Create task (planned_mets required; server computes planned_met_min; auto rest insertion supported)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskCreate" }
+            examples:
+              create_housework:
+                value:
+                  date: "2026-02-06"
+                  time_block: PM
+                  title: "掃除機がけ"
+                  category: HOUSEWORK
+                  planned_duration_min: 20
+                  planned_mets: 3.3
+                  auto_rest: true
+                  notes: "分割して短時間で"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              examples:
+                created:
+                  value:
+                    id: "tsk_01HXCCC"
+                    date: "2026-02-06"
+                    time_block: PM
+                    title: "掃除機がけ"
+                    category: HOUSEWORK
+                    planned_duration_min: 20
+                    planned_mets: 3.3
+                    planned_met_min: 66
+                    auto_rest: true
+                    notes: "分割して短時間で"
+                    status: PLANNED
+                    actual_duration_min: 0
+                    actual_mets: 0
+                    actual_met_min: 0
+                    post_fatigue_0_10: 0
+                    perceived_difficulty: 0
+                    carryover_to_nextday: false
+                    created_at: "2026-02-06T10:00:00+09:00"
+                    updated_at: "2026-02-06T10:00:00+09:00"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "500": { $ref: "#/components/responses/InternalError" }
+
+  /planner/tasks/{task_id}:
+    patch:
+      tags: [Tasks]
+      summary: Update task plan fields (recompute planned_met_min; may recompute rest blocks if auto_rest)
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskUpdate" }
+            examples:
+              update:
+                value:
+                  planned_duration_min: 30
+                  planned_mets: 3.0
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+    delete:
+      tags: [Tasks]
+      summary: Delete task (also deletes auto rest blocks created solely for this task if orphaned)
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /planner/tasks/{task_id}/complete:
+    post:
+      tags: [Tasks]
+      summary: Complete task (actual METs post-hoc override; server computes actual_met_min and updates weekly summary cache)
+      parameters:
+        - name: task_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TaskComplete" }
+            examples:
+              complete:
+                value:
+                  status: DONE
+                  actual_duration_min: 25
+                  actual_mets: 2.8
+                  post_fatigue_0_10: 5
+                  perceived_difficulty: 1
+                  carryover_to_nextday: true
+      responses:
+        "200":
+          description: Completed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              examples:
+                completed:
+                  value:
+                    id: "tsk_01HXCCC"
+                    date: "2026-02-06"
+                    time_block: PM
+                    title: "掃除機がけ"
+                    category: HOUSEWORK
+                    planned_duration_min: 20
+                    planned_mets: 3.3
+                    planned_met_min: 66
+                    auto_rest: true
+                    notes: "分割して短時間で"
+                    status: DONE
+                    actual_duration_min: 25
+                    actual_mets: 2.8
+                    actual_met_min: 70
+                    post_fatigue_0_10: 5
+                    perceived_difficulty: 1
+                    carryover_to_nextday: true
+                    created_at: "2026-02-06T10:00:00+09:00"
+                    updated_at: "2026-02-06T12:00:00+09:00"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /planner/rest-blocks:
+    post:
+      tags: [RestBlocks]
+      summary: Create rest block (user-added)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RestBlockCreate" }
+            examples:
+              add:
+                value:
+                  date: "2026-02-06"
+                  time_block: PM
+                  minutes: 15
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RestBlock" }
+              examples:
+                created:
+                  value:
+                    id: "rb_01HXD00"
+                    date: "2026-02-06"
+                    time_block: PM
+                    minutes: 15
+                    reason: USER_ADDED
+                    created_at: "2026-02-06T10:05:00+09:00"
+                    updated_at: "2026-02-06T10:05:00+09:00"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/rest-blocks/{rest_block_id}:
+    delete:
+      tags: [RestBlocks]
+      summary: Delete rest block
+      parameters:
+        - name: rest_block_id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "204":
+          description: Deleted
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /planner/suggestions:
+    get:
+      tags: [Suggestions]
+      summary: Get activity suggestions for date (good day + weekly gap only)
+      parameters:
+        - name: date
+          in: query
+          required: true
+          schema: { $ref: "#/components/schemas/Date" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuggestionResponse" }
+              examples:
+                not_good_day:
+                  value:
+                    date: "2026-02-06"
+                    good_day: false
+                    good_day_score_0_100: 40
+                    risk_flag: HIGH
+                    weekly_gap_met_min: 200
+                    cards: []
+                good_day_with_gap:
+                  value:
+                    date: "2026-02-06"
+                    good_day: true
+                    good_day_score_0_100: 88
+                    risk_flag: LOW
+                    weekly_gap_met_min: 280
+                    cards:
+                      - id: "sg_01HX1"
+                        kind: RECOVERY
+                        title: "ストレッチ"
+                        mets: 2.0
+                        duration_options_min: [10, 15, 20, 30]
+                        estimated_met_min: 20
+                        rationale:
+                          good_day: true
+                          weekly_gap_met_min: 280
+                          risk_flag: LOW
+                      - id: "sg_01HX2"
+                        kind: LIGHT
+                        title: "ゆっくり散歩"
+                        mets: 2.8
+                        duration_options_min: [10, 15, 20, 30]
+                        estimated_met_min: 42
+                        rationale:
+                          good_day: true
+                          weekly_gap_met_min: 280
+                          risk_flag: LOW
+                      - id: "sg_01HX3"
+                        kind: MODERATE
+                        title: "速歩"
+                        mets: 4.0
+                        duration_options_min: [10, 15, 20, 30]
+                        estimated_met_min: 60
+                        rationale:
+                          good_day: true
+                          weekly_gap_met_min: 280
+                          risk_flag: LOW
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/suggestions/accept:
+    post:
+      tags: [Suggestions]
+      summary: Accept suggestion -> creates an EXERCISE task with planned_mets and duration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SuggestionAccept" }
+            examples:
+              accept:
+                value:
+                  suggestion_id: "sg_01HX3"
+                  date: "2026-02-06"
+                  time_block: EVENING
+                  duration_min: 15
+                  override_mets: null
+                  auto_rest: true
+      responses:
+        "201":
+          description: Created task
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Task" }
+              examples:
+                created:
+                  value:
+                    id: "tsk_01HXEEE"
+                    date: "2026-02-06"
+                    time_block: EVENING
+                    title: "速歩"
+                    category: EXERCISE
+                    planned_duration_min: 15
+                    planned_mets: 4.0
+                    planned_met_min: 60
+                    auto_rest: true
+                    notes: ""
+                    status: PLANNED
+                    actual_duration_min: 0
+                    actual_mets: 0
+                    actual_met_min: 0
+                    post_fatigue_0_10: 0
+                    perceived_difficulty: 0
+                    carryover_to_nextday: false
+                    created_at: "2026-02-06T10:20:00+09:00"
+                    updated_at: "2026-02-06T10:20:00+09:00"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /planner/weekly-summary:
+    get:
+      tags: [WeeklySummary]
+      summary: Get weekly summary (goal/achieved/gap/warnings)
+      parameters:
+        - name: week_id
+          in: query
+          required: true
+          schema: { type: string, examples: ["2026-W06"] }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/WeeklySummary" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
